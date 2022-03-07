@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+service KeyValue {
+    rpc Get(ReadRequest) returns (ReadResponse) {}
+    rpc Set(WriteRequest) returns (WriteResponse) {}
+}
+
+enum ErrorCode {
+    IoError = 1;
+    Timeout = 2;
+    Corruption = 3;
+    RetryLater = 4;
+}
+
+message ReadOption {
+    int32 consistency_level = 1;
+}
+
+message ReadRequest {
+    bytes key = 1;
+    ReadOption option = 2;
+}
+
+message ReadResponse {
+    bytes value = 1;
+    ErrorCode err = 2;
+}
+
+message WriteOption {
+    bool sync = 1;
+}
+
+message WriteRequest {
+    bytes key = 1;
+    bytes value = 2;
+    bool is_remove = 3;
+    WriteOption option = 4;
+}
+
+message WriteResponse {
+    ErrorCode err = 1;
+}

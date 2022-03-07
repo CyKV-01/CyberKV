@@ -1,0 +1,3 @@
+service Coordinator {
+    rpc HeartBeat(NodeInfo) returns (HeartBeatResponse) {}
+}
