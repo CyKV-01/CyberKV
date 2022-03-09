@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package kv;
+option go_package = "github.com/CyKV-01/CyberKV/proto";
+
+import "status.proto";
+
+service KeyValue {
+    rpc Get(ReadRequest) returns (ReadResponse) {}
+    rpc Set(WriteRequest) returns (WriteResponse) {}
+    rpc Remove(WriteRequest) returns (WriteResponse) {}
+}
+
+message ReadOption {
+    int32 consistency_level = 1;
+}
+
+message ReadRequest {
+    string key = 1;
+    ReadOption option = 2;
+}
+
+message ReadResponse {
+    string value = 1;
+    uint64 ts = 2;
+    status.Status status = 3;
+}
+
+message WriteOption {
+    bool sync = 1;
+}
+
+message WriteRequest {
+    string key = 1;
+    string value = 2;
+    bool is_remove = 3;
+    uint64 ts = 4;
+    WriteOption option = 5;;
+}
+
+message WriteResponse {
+    status.Status status = 1;
+}
