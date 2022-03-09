@@ -104,6 +104,8 @@ func (cluster *baseCluster) AssignSlotsBackground() {
 		slots := cluster.getUnassignedSlots()
 		excludedNodes := []common.NodeID{}
 		slotIDs := []common.SlotID{}
+		
+
 		for _, slot := range slots {
 			cluster.AssignSlots()
 		}

@@ -1,15 +1,14 @@
 syntax = "proto3";
 
+package kv;
+option go_package = "github.com/CyKV-01/CyberKV/proto";
+
+import "status.proto";
+
 service KeyValue {
     rpc Get(ReadRequest) returns (ReadResponse) {}
     rpc Set(WriteRequest) returns (WriteResponse) {}
-}
-
-enum ErrorCode {
-    IoError = 1;
-    Timeout = 2;
-    Corruption = 3;
-    RetryLater = 4;
+    rpc Remove(WriteRequest) returns (WriteResponse) {}
 }
 
 message ReadOption {
@@ -17,13 +16,13 @@ message ReadOption {
 }
 
 message ReadRequest {
-    bytes key = 1;
+    string key = 1;
     ReadOption option = 2;
 }
 
 message ReadResponse {
-    bytes value = 1;
-    ErrorCode err = 2;
+    string value = 1;
+    status.Status status = 2;
 }
 
 message WriteOption {
@@ -31,12 +30,12 @@ message WriteOption {
 }
 
 message WriteRequest {
-    bytes key = 1;
-    bytes value = 2;
+    string key = 1;
+    string value = 2;
     bool is_remove = 3;
     WriteOption option = 4;
 }
 
 message WriteResponse {
-    ErrorCode err = 1;
+    status.Status status = 1;
 }
