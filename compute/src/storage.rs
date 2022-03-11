@@ -11,7 +11,7 @@ use crate::{
         kv::{key_value_client::*, ReadResponse},
         status::ErrorCode,
     },
-    types::{calc_slot, SlotID, Status},
+    types::{calc_slot, SlotID, build_status},
 };
 
 type NodeID = u64;
@@ -59,7 +59,7 @@ impl StorageLayer {
         match nodes {
             Some(nodes) => {
                 if nodes.len() < self.read_quorum {
-                    return Err(Status(ErrorCode::IoError, "no enough storage node"));
+                    return Err(build_status(ErrorCode::IoError, "no enough storage node"));
                 }
 
                 let mut read_results = Vec::with_capacity(nodes.len());
@@ -89,7 +89,7 @@ impl StorageLayer {
                 }
 
                 if read_counts < self.read_quorum {
-                    return Err(Status(
+                    return Err(build_status(
                         ErrorCode::IoError,
                         "no enough storage node to reach read quorum",
                     ));
@@ -98,7 +98,7 @@ impl StorageLayer {
                 return Ok(Some(value));
             }
 
-            None => return Err(Status(ErrorCode::IoError, "no available storage node")),
+            None => return Err(build_status(ErrorCode::IoError, "no available storage node")),
         }
     }
 
