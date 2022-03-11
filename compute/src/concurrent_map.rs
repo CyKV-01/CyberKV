@@ -23,7 +23,6 @@ impl ConcurrentMap<String, Value> {
             Some(value) => Ok(Some(value.clone())),
             None => Ok(None),
         }
-        // Ok(bucket.get(key))
     }
 
     pub async fn set(&self, key: String, value: Value) -> Result<Option<Value>> {

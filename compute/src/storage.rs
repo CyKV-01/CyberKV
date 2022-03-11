@@ -4,6 +4,7 @@ use futures::future::join_all;
 use tokio::sync::RwLock;
 use tonic::transport::Channel;
 
+use crate::types::Value;
 use crate::{
     error::Result,
     kvs::Kvs,
@@ -11,7 +12,7 @@ use crate::{
         kv::{key_value_client::*, ReadResponse},
         status::ErrorCode,
     },
-    types::{calc_slot, SlotID, build_status},
+    types::{build_status, calc_slot, SlotID},
 };
 
 type NodeID = u64;
@@ -51,7 +52,7 @@ pub struct StorageLayer {
 }
 
 impl StorageLayer {
-    pub async fn get(&self, key: &str) -> Result<Option<String>> {
+    pub async fn get(&self, key: &str) -> Result<Option<Value>> {
         let slot = calc_slot(key);
         let slot_node_index = self.slot_node_index.read().await;
         let nodes = slot_node_index.get(&slot);
@@ -67,16 +68,19 @@ impl StorageLayer {
                     read_results.push(node.get(key));
                 }
 
+                // TODO: wait until reaching read quorum
                 let results = join_all(read_results).await;
 
                 let mut read_counts = 0;
-                let mut max_ts = 0;
-                let mut value = String::new();
+                let mut value = Value {
+                    timestamp: 0,
+                    value: String::new(),
+                };
                 for result in results {
                     if let Ok(Some(result)) = result {
-                        if result.ts > max_ts {
-                            max_ts = result.ts;
-                            value = result.value;
+                        if result.ts > value.timestamp {
+                            value.timestamp = result.ts;
+                            value.value = result.value;
                         }
 
                         read_counts += 1;
@@ -98,15 +102,20 @@ impl StorageLayer {
                 return Ok(Some(value));
             }
 
-            None => return Err(build_status(ErrorCode::IoError, "no available storage node")),
+            None => {
+                return Err(build_status(
+                    ErrorCode::IoError,
+                    "no available storage node",
+                ))
+            }
         }
     }
 
-    fn set(&self, key: String, value: String) -> Result<Option<String>> {
+    pub async fn set(&self, key: String, value: Value) -> Result<Option<Value>> {
         todo!()
     }
 
-    fn remove(&self, key: &str) -> Result<Option<String>> {
+    pub async fn remove(&self, key: &str) -> Result<Option<Value>> {
         todo!()
     }
 }
