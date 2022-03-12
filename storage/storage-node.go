@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"path/filepath"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/yah01/CyberKV/proto"
