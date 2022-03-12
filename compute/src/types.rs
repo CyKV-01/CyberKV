@@ -5,7 +5,7 @@ use crate::proto::status;
 pub type SlotID = u16;
 pub type TimeStamp = u64;
 
-const kSlotNum: u16 = 32;
+const SLOT_NUM: u16 = 32;
 
 #[derive(Clone, Debug)]
 pub struct Value {
@@ -23,7 +23,7 @@ pub fn build_status(code: status::ErrorCode, msg: &str) -> status::Status {
 pub fn calc_slot(key: &str) -> SlotID {
     let crc = Crc::<u32>::new(&crc::CRC_32_ISCSI);
     let crc = crc.checksum(key.as_bytes());
-    let slot = crc % kSlotNum as u32;
+    let slot = crc % SLOT_NUM as u32;
 
     slot as SlotID
 }
