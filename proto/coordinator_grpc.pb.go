@@ -57,7 +57,7 @@ func RegisterCoordinatorServer(s grpc.ServiceRegistrar, srv CoordinatorServer) {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Coordinator_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "Coordinator",
+	ServiceName: "coordinator.Coordinator",
 	HandlerType: (*CoordinatorServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams:     []grpc.StreamDesc{},
