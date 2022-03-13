@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
+	"go.uber.org/zap"
 )
 
 const (
@@ -32,13 +34,31 @@ type Cluster interface {
 }
 
 type baseCluster struct {
-	slots       map[common.SlotID]*SlotInfo
+	slots            map[common.SlotID]*SlotInfo
+	scheduleTimer    time.Timer
+	scheduleNotifier chan []*SlotInfo
+
 	replicaNum  int
 	readQuorum  int
 	writeQuorum int
 
 	nodes   map[common.NodeID]Node
 	rwmutex sync.RWMutex
+}
+
+func NewBaseCluster(replicaNum, readQuorum, writeQuorum int) *baseCluster {
+	return &baseCluster{
+		slots:            make(map[common.SlotID]*SlotInfo),
+		scheduleTimer:    *time.NewTimer(time.Second),
+		scheduleNotifier: make(chan []*SlotInfo, 32),
+
+		replicaNum:  replicaNum,
+		readQuorum:  readQuorum,
+		writeQuorum: writeQuorum,
+
+		nodes:   make(map[common.NodeID]Node),
+		rwmutex: sync.RWMutex{},
+	}
 }
 
 func (cluster *baseCluster) AddNode(info *proto.NodeInfo) {
@@ -114,17 +134,31 @@ func (cluster *baseCluster) GetNodesBySlot(slot common.SlotID) []Node {
 }
 
 func (cluster *baseCluster) AssignSlotsBackground() {
-	for ; true; time.Sleep(time.Second) {
+	var slots []*SlotInfo
+	for {
+		select {
+		case <-cluster.scheduleTimer.C:
+			slots = cluster.getUnassignedSlots()
 
-		slots := cluster.getUnassignedSlots()
+		case slots = <-cluster.scheduleNotifier:
+		}
+
 		if len(slots) == 0 {
 			continue
 		}
 
-		cluster.AssignSlots(slots)
+		log.Infof("schedule slots=%+v", slots)
+		n, err := cluster.AssignSlots(slots)
+		if n > 0 {
+			log.Info("scheduled slots", zap.Int("succeed", n))
+		}
+		if err != nil {
+			log.Error("failed to schedule some slots", zap.Error(err))
+		}
 	}
 }
 
+// Only created slots
 func (cluster *baseCluster) getUnassignedSlots() []*SlotInfo {
 	unassignedSlots := make([]*SlotInfo, 0)
 
@@ -141,18 +175,9 @@ type ComputeCluster struct {
 	*baseCluster
 }
 
-func NewComputeCluster(replicaNum, writeQuorum, readQuorum int) *ComputeCluster {
+func NewComputeCluster(replicaNum, readQuorum, writeQuorum int) *ComputeCluster {
 	return &ComputeCluster{
-		baseCluster: &baseCluster{
-			slots: make(map[common.SlotID]*SlotInfo),
-
-			replicaNum:  replicaNum,
-			writeQuorum: writeQuorum,
-			readQuorum:  readQuorum,
-
-			nodes:   make(map[common.NodeID]Node),
-			rwmutex: sync.RWMutex{},
-		},
+		baseCluster: NewBaseCluster(replicaNum, readQuorum, writeQuorum),
 	}
 }
 
@@ -165,18 +190,9 @@ type StorageCluster struct {
 	*baseCluster
 }
 
-func NewStorageCluster(replicaNum, writeQuorum, readQuorum int) *StorageCluster {
+func NewStorageCluster(replicaNum, readQuorum, writeQuorum int) *StorageCluster {
 	return &StorageCluster{
-		baseCluster: &baseCluster{
-			slots: make(map[common.SlotID]*SlotInfo),
-
-			replicaNum:  replicaNum,
-			writeQuorum: writeQuorum,
-			readQuorum:  readQuorum,
-
-			nodes:   make(map[common.NodeID]Node),
-			rwmutex: sync.RWMutex{},
-		},
+		baseCluster: NewBaseCluster(replicaNum, readQuorum, writeQuorum),
 	}
 }
 

@@ -3,15 +3,16 @@ package coordinator
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net"
 	"path"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
 	etcdcli "go.etcd.io/etcd/client/v3"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -30,8 +31,8 @@ type Coordinator struct {
 
 func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 	replicaNum := DefaultReplicaNum
-	writeQuorum := DefaultWriteQuorum
 	readQuorum := DefaultReadQuorum
+	writeQuorum := DefaultWriteQuorum
 
 	nodeInfo := proto.NodeInfo{
 		Addr: addr,
@@ -42,7 +43,7 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		info:           &nodeInfo,
 		etcdClient:     etcdClient,
 		computeCluster: NewComputeCluster(1, 1, 1),
-		storageCluster: NewStorageCluster(replicaNum, writeQuorum, readQuorum),
+		storageCluster: NewStorageCluster(replicaNum, readQuorum, writeQuorum),
 	}
 }
 
@@ -89,6 +90,9 @@ func (coord *Coordinator) Register() {
 		panic(err)
 	}
 
+	log.Info("register coordinator",
+		zap.String("id", coord.id.String()),
+		zap.String("addr", coord.info.Addr))
 	_, err = coord.etcdClient.Put(ctx, path.Join(common.ServicePrefix, "coordinator", coord.id.String()), string(infoBytes))
 	if err != nil {
 		panic(err)

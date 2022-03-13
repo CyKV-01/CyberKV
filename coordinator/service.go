@@ -27,9 +27,9 @@ func (coord *Coordinator) Get(ctx context.Context, request *proto.ReadRequest) (
 
 func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) (response *proto.WriteResponse, err error) {
 	slot := common.CalcSlotID(request.Key)
-
 	nodes := coord.computeCluster.GetNodesBySlot(slot)
 	if len(nodes) == 0 {
+		
 		return &proto.WriteResponse{
 			Status: &proto.Status{
 				ErrCode:    proto.ErrorCode_RetryLater,

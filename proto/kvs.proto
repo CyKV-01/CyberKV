@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package kv;
+package kvs;
 option go_package = "github.com/CyKV-01/CyberKV/proto";
 
 import "status.proto";

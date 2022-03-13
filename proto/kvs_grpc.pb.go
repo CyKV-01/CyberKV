@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.6.1
-// source: kv.proto
+// source: kvs.proto
 
 package proto
 
@@ -37,7 +37,7 @@ func NewKeyValueClient(cc grpc.ClientConnInterface) KeyValueClient {
 
 func (c *keyValueClient) Get(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error) {
 	out := new(ReadResponse)
-	err := c.cc.Invoke(ctx, "/kv.KeyValue/Get", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/kvs.KeyValue/Get", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (c *keyValueClient) Get(ctx context.Context, in *ReadRequest, opts ...grpc.
 
 func (c *keyValueClient) Set(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error) {
 	out := new(WriteResponse)
-	err := c.cc.Invoke(ctx, "/kv.KeyValue/Set", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/kvs.KeyValue/Set", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (c *keyValueClient) Set(ctx context.Context, in *WriteRequest, opts ...grpc
 
 func (c *keyValueClient) Remove(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error) {
 	out := new(WriteResponse)
-	err := c.cc.Invoke(ctx, "/kv.KeyValue/Remove", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/kvs.KeyValue/Remove", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func _KeyValue_Get_Handler(srv interface{}, ctx context.Context, dec func(interf
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/kv.KeyValue/Get",
+		FullMethod: "/kvs.KeyValue/Get",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KeyValueServer).Get(ctx, req.(*ReadRequest))
@@ -126,7 +126,7 @@ func _KeyValue_Set_Handler(srv interface{}, ctx context.Context, dec func(interf
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/kv.KeyValue/Set",
+		FullMethod: "/kvs.KeyValue/Set",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KeyValueServer).Set(ctx, req.(*WriteRequest))
@@ -144,7 +144,7 @@ func _KeyValue_Remove_Handler(srv interface{}, ctx context.Context, dec func(int
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/kv.KeyValue/Remove",
+		FullMethod: "/kvs.KeyValue/Remove",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KeyValueServer).Remove(ctx, req.(*WriteRequest))
@@ -156,7 +156,7 @@ func _KeyValue_Remove_Handler(srv interface{}, ctx context.Context, dec func(int
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var KeyValue_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "kv.KeyValue",
+	ServiceName: "kvs.KeyValue",
 	HandlerType: (*KeyValueServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -173,5 +173,5 @@ var KeyValue_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "kv.proto",
+	Metadata: "kvs.proto",
 }
