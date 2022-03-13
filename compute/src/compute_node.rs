@@ -45,14 +45,13 @@ impl ComputeNode {
     pub async fn register(&mut self) -> Result<()> {
         let lease = self.meta.lease_grant(30, None).await?;
         let (mut keeper, mut stream) = self.meta.lease_keep_alive(lease.id()).await?;
-        keeper.keep_alive().await?;
 
         tokio::spawn(async move {
             loop {
                 keeper.keep_alive().await.unwrap();
                 if let Some(resp) = stream.message().await.unwrap() {
                     debug!(
-                        "keepalive stream message: id={} ttl={}",
+                        "keep alive stream message: id={} ttl={}",
                         resp.id(),
                         resp.ttl()
                     )
