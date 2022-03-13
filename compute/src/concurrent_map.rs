@@ -14,6 +14,12 @@ pub struct ConcurrentMap<K, V> {
 }
 
 impl ConcurrentMap<String, Value> {
+    pub fn new() -> Self {
+        Self {
+            buckets: Arc::new(Vec::new()),
+        }
+    }
+
     pub async fn get(&self, key: &str) -> Result<Option<Value>> {
         let slot = hash(key) as usize % self.buckets.len();
 

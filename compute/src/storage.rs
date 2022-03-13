@@ -4,25 +4,17 @@ use futures::future::join_all;
 use tokio::sync::RwLock;
 use tonic::transport::Channel;
 
+use crate::proto::node::NodeInfo;
 use crate::types::Value;
 use crate::{
     error::Result,
     kvs::Kvs,
     proto::{
-        kv::{key_value_client::*, ReadResponse},
+        kvs::{key_value_client::*, ReadResponse},
         status::ErrorCode,
     },
     types::{build_status, calc_slot, SlotID},
 };
-
-type NodeID = u64;
-
-#[derive(Debug)]
-pub struct NodeInfo {
-    id: NodeID,
-    addr: String,
-}
-
 #[derive(Debug)]
 pub struct StorageNode {
     info: NodeInfo,
@@ -46,12 +38,21 @@ impl StorageNode {
 #[derive(Debug)]
 pub struct StorageLayer {
     replica_num: usize,
-    write_quorum: usize,
     read_quorum: usize,
+    write_quorum: usize,
     slot_node_index: RwLock<HashMap<SlotID, Vec<StorageNode>>>,
 }
 
 impl StorageLayer {
+    pub fn new(replica_num: usize, read_quorum: usize, write_quorum: usize) -> Self {
+        Self {
+            replica_num,
+            read_quorum,
+            write_quorum,
+            slot_node_index: RwLock::new(HashMap::new()),
+        }
+    }
+
     pub async fn get(&self, key: &str) -> Result<Option<Value>> {
         let slot = calc_slot(key);
         let slot_node_index = self.slot_node_index.read().await;
