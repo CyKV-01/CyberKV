@@ -1,6 +1,8 @@
 package coordinator
 
 import (
+	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -16,28 +18,17 @@ const (
 )
 
 type SlotInfo struct {
-	nodes []Node
+	Id    common.SlotID
+	Nodes []Node
 }
 
 type Cluster interface {
 	AddNode(*proto.NodeInfo)
-	// AssignSlots(slots []common.SlotID, excludedNodes []common.NodeID) (int, error)
-	// GetNodes(excludedNodes []common.NodeID) []Node
+	AssignSlots(slots []*SlotInfo) (int, error)
+	GetNodes() []Node
 	// GetNode(id common.NodeID) Node
 	GetNodesBySlot(slot common.SlotID) []Node
 	// AssignSlotsBackground()
-}
-
-type Node interface {
-	// GetId() common.NodeID
-	// GetSlots() []common.SlotID
-	// HasSlot(id common.SlotID) bool
-	// GetUsage() uint64
-	// GetPercent() float32
-	// GetCap() uint64
-	// GetCpuPercent() float32
-
-	// AssignSlots(slots []common.SlotID) error
 }
 
 type baseCluster struct {
@@ -59,52 +50,52 @@ func (cluster *baseCluster) AddNode(info *proto.NodeInfo) {
 	}
 }
 
-// func (cluster *baseCluster) AssignSlots(slots []common.SlotID, excludedNodes []common.NodeID) (int, error) {
-// 	nodes := cluster.GetNodes(excludedNodes)
-// 	sort.Slice(nodes, func(i, j int) bool {
-// 		return len(nodes[i].GetSlots()) < len(nodes[j].GetSlots())
-// 	})
+func (cluster *baseCluster) AssignSlots(slots []*SlotInfo) (int, error) {
+	nodes := cluster.GetNodes()
+	sort.Slice(nodes, func(i, j int) bool {
+		return len(nodes[i].GetSlots()) < len(nodes[j].GetSlots())
+	})
 
-// 	if len(nodes) == 0 {
-// 		return 0, fmt.Errorf("no node to assign slots")
-// 	}
+	if len(nodes) == 0 {
+		return 0, fmt.Errorf("no node to assign slots")
+	}
 
-// 	nodeIdx := 0
-// 	j := 0
-// 	for i := 0; i < len(slots); i = j {
-// 		node := nodes[nodeIdx]
-// 		j := i + 3
-// 		if j > len(slots) {
-// 			j = len(slots)
-// 		}
+	nodeIdx := 0
+	j := 0
+	assignedSlotCount := 0
+	for i := 0; i < len(slots) && i < len(nodes); i = j {
+		node := nodes[nodeIdx]
+		j := i + 1
+		if j > len(slots) {
+			j = len(slots)
+		}
 
-// 		err := node.AssignSlots(slots[i:j])
-// 		if err != nil {
-// 			return i, err
-// 		}
-// 	}
+		err := node.AssignSlots(slots[i:j])
+		if err != nil {
+			return i, err
+		}
+		assignedSlotCount += j - i
+	}
 
-// 	return len(slots), nil
-// }
+	return assignedSlotCount, nil
+}
 
-// func (cluster *baseCluster) GetNodes(excludedNodes []common.NodeID) []Node {
-// 	excludedNodesMap := make(map[common.NodeID]bool, len(excludedNodes))
-// 	for _, node := range excludedNodes {
-// 		excludedNodesMap[node] = true
-// 	}
+func (cluster *baseCluster) GetNodes() []Node {
+	// excludedNodesMap := make(map[common.NodeID]bool, len(excludedNodes))
+	// for _, node := range excludedNodes {
+	// 	excludedNodesMap[node] = true
+	// }
 
-// 	cluster.rwmutex.RLock()
-// 	defer cluster.rwmutex.RUnlock()
+	cluster.rwmutex.RLock()
+	defer cluster.rwmutex.RUnlock()
 
-// 	nodes := make([]Node, 0, len(cluster.nodes)-len(excludedNodes))
-// 	for id, node := range cluster.nodes {
-// 		if !excludedNodesMap[id] {
-// 			nodes = append(nodes, node)
-// 		}
-// 	}
+	nodes := make([]Node, 0, len(cluster.nodes))
+	for _, node := range cluster.nodes {
+		nodes = append(nodes, node)
+	}
 
-// 	return nodes
-// }
+	return nodes
+}
 
 // func (cluster *baseCluster) GetNode(id common.NodeID) Node {
 // 	cluster.rwmutex.RLock()
@@ -119,19 +110,18 @@ func (cluster *baseCluster) GetNodesBySlot(slot common.SlotID) []Node {
 		return nil
 	}
 
-	return slotInfo.nodes
+	return slotInfo.Nodes
 }
 
 func (cluster *baseCluster) AssignSlotsBackground() {
 	for ; true; time.Sleep(time.Second) {
 
 		slots := cluster.getUnassignedSlots()
-		excludedNodes := []common.NodeID{}
-		slotIDs := []common.SlotID{}
-
-		for _, slot := range slots {
-			cluster.AssignSlots()
+		if len(slots) == 0 {
+			continue
 		}
+
+		cluster.AssignSlots(slots)
 	}
 }
 
@@ -139,22 +129,12 @@ func (cluster *baseCluster) getUnassignedSlots() []*SlotInfo {
 	unassignedSlots := make([]*SlotInfo, 0)
 
 	for _, slot := range cluster.slots {
-		if len(slot.nodes) < cluster.replicaNum {
+		if len(slot.Nodes) < cluster.replicaNum {
 			unassignedSlots = append(unassignedSlots, slot)
 		}
 	}
 
 	return unassignedSlots
-}
-
-type baseNode struct {
-	info *proto.NodeInfo
-
-	serveSlots          map[common.SlotID]*SlotInfo
-	storageUsage        uint64
-	storageUsagePercent float32
-	cap                 uint64
-	cpuPercent          float32
 }
 
 type ComputeCluster struct {

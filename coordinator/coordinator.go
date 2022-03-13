@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net"
 	"path"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/proto"
 	etcdcli "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc"
 )
 
 type Coordinator struct {
@@ -45,12 +48,24 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 
 func (coord *Coordinator) Start() {
 	coord.Register()
-
 	go coord.watchCluster()
+
+	listener, err := net.Listen("tcp", coord.info.Addr)
+	if err != nil {
+		panic(err)
+	}
+
+	server := grpc.NewServer()
+	proto.RegisterKeyValueServer(server, coord)
+	err = server.Serve(listener)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (coord *Coordinator) Register() {
 	ctx := context.Background()
+	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
 
 	resp, err := coord.etcdClient.Grant(ctx, common.DefaultTTL)
 	if err != nil {
