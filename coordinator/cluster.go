@@ -136,7 +136,7 @@ func (cluster *baseCluster) GetNodesBySlot(slot common.SlotID) []Node {
 
 func (cluster *baseCluster) AssignSlotsBackground() {
 	var slots []*SlotInfo
-	for {
+	for ; true; time.Sleep(time.Second) {
 		select {
 		case <-cluster.scheduleTimer.C:
 			slots = cluster.getUnassignedSlots()
