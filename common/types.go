@@ -3,12 +3,12 @@ package common
 import "hash/crc32"
 
 type SlotID int16
-type NodeID int32
+type NodeID string
 
 const (
 	SlotNum = 32
 
-	ServicePrefix = "/services"
+	ServicePrefix = "services"
 	DefaultTTL    = 30
 )
 

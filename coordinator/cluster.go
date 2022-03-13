@@ -26,6 +26,7 @@ type SlotInfo struct {
 
 type Cluster interface {
 	AddNode(*proto.NodeInfo)
+	AssignSlotsBackground()
 	AssignSlots(slots []*SlotInfo) (int, error)
 	GetNodes() []Node
 	// GetNode(id common.NodeID) Node

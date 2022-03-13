@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net"
@@ -48,8 +49,12 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 }
 
 func (coord *Coordinator) Start() {
+	log.Info("coordinator starting...")
+
 	coord.Register()
 	go coord.watchCluster()
+	go coord.computeCluster.AssignSlotsBackground()
+	go coord.storageCluster.AssignSlotsBackground()
 
 	listener, err := net.Listen("tcp", coord.info.Addr)
 	if err != nil {
@@ -73,17 +78,10 @@ func (coord *Coordinator) Register() {
 		panic(err)
 	}
 
-	keepAliveCh, err := coord.etcdClient.KeepAlive(ctx, resp.ID)
+	_, err = coord.etcdClient.KeepAlive(ctx, resp.ID)
 	if err != nil {
 		panic(err)
 	}
-
-	go func() {
-		select {
-		case <-keepAliveCh:
-			return
-		}
-	}()
 
 	infoBytes, err := json.Marshal(coord.info)
 	if err != nil {
@@ -100,22 +98,33 @@ func (coord *Coordinator) Register() {
 }
 
 func (coord *Coordinator) watchCluster() {
-	watchCh := coord.etcdClient.Watch(context.Background(), common.ServicePrefix)
+	log.Info("start watching cluster...")
+	watchCh := coord.etcdClient.Watch(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
 
 	for resp := range watchCh {
 		for _, event := range resp.Events {
 			if event.Type == etcdcli.EventTypePut {
 				var nodeInfo proto.NodeInfo
-				err := json.Unmarshal(event.Kv.Value, &nodeInfo)
-				if err != nil {
-					log.Info("failed to watch new node regisering", zap.Error(err))
-				} else {
-					if nodeInfo.Type == proto.NodeType_ComputeNode {
-						coord.computeCluster.AddNode(&nodeInfo)
-					} else if nodeInfo.Type == proto.NodeType_StorageNode {
-						coord.storageCluster.AddNode(&nodeInfo)
-					}
+				nodeInfo.Id = string(event.Kv.Key)
+				nodeInfo.Addr = string(event.Kv.Value)
+				// err := json.Unmarshal(event.Kv.Value, &nodeInfo)
+				// if err != nil {
+				// 	log.Warn("failed to watch new node regisering", zap.Error(err))
+				// 	continue
+				// }
+
+				if bytes.Contains(event.Kv.Key, []byte("compute")) {
+					log.Info("add new compute node",
+						zap.String("id", nodeInfo.Id),
+						zap.String("addr", nodeInfo.Addr))
+					coord.computeCluster.AddNode(&nodeInfo)
+				} else if bytes.Contains(event.Kv.Key, []byte("storage")) {
+					log.Info("add new storage node",
+						zap.String("id", nodeInfo.Id),
+						zap.String("addr", nodeInfo.Addr))
+					coord.storageCluster.AddNode(&nodeInfo)
 				}
+
 			}
 		}
 	}
