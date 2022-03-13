@@ -108,7 +108,7 @@ func (coord *Coordinator) watchCluster() {
 				var nodeInfo proto.NodeInfo
 				err := json.Unmarshal(event.Kv.Value, &nodeInfo)
 				if err != nil {
-					log.Printf("failed to watch new node regisering, err=%+v", err)
+					log.Info("failed to watch new node regisering", zap.Error(err))
 				} else {
 					if nodeInfo.Type == proto.NodeType_ComputeNode {
 						coord.computeCluster.AddNode(&nodeInfo)
