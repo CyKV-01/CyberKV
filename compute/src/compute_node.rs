@@ -1,92 +1,86 @@
+use core::time;
+use std::io::Read;
+use std::path;
+
 use crate::concurrent_map::{ConcurrentMap, MemTable};
-use crate::kvs::Kvs;
-use crate::proto::kv::key_value_client::*;
-use crate::proto::kv::{key_value_server::*, *};
+// use crate::error::Result;
+use crate::error::Result;
+use crate::proto::kvs::key_value_client::*;
+use crate::proto::kvs::{key_value_server::*, *};
+use crate::proto::node::*;
 use crate::proto::status::{self, ErrorCode};
+use crate::service::{self, KvServer};
 use crate::storage::StorageLayer;
 use crate::types::build_status;
 use crate::types::Value;
+use etcd_client::{LeaseGrantOptions, PutOptions};
+use log::{debug, error, info, trace, warn};
+use tonic::codegen::http::header::SERVER;
 use tonic::{transport::Server, Request, Response, Status};
 
-#[derive(Debug)]
-pub struct ComputeNode {
-    mem_table: MemTable,
+const SERVICE_PREFIX: &str = "services";
+const COMPUTE_SERVICE_PREFIX: &str = "services/compute";
 
-    storage_layer: StorageLayer,
+pub struct ComputeNode {
+    // data
+    info: NodeInfo,
+    meta: etcd_client::Client,
+
+    // services
+    kv: KvServer,
 }
 
-#[tonic::async_trait]
-impl KeyValue for ComputeNode {
-    async fn get(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
-        let request = request.into_inner();
+impl ComputeNode {
+    pub fn new(meta: etcd_client::Client, addr: String) -> Self {
+        Self {
+            info: NodeInfo {
+                id: uuid::Uuid::new_v4().to_string(),
+                addr: addr,
+            },
+            meta: meta,
+            kv: KvServer::new(),
+        }
+    }
 
-        let response = match self.mem_table.get(&request.key).await {
-            Ok(value) => {
-                if let Some(value) = value {
-                    ReadResponse {
-                        value: value.value,
-                        ts: value.timestamp,
-                        status: None,
-                    }
-                } else {
-                    // TODO: Cache miss in MemTable, read it from storage layer
-                    ReadResponse {
-                        value: String::new(),
-                        ts: 0,
-                        status: Some(status::Status {
-                            err_code: ErrorCode::KeyNotFound.into(),
-                            err_message: "key not found".to_string(),
-                        }),
-                    }
+    pub async fn register(&mut self) -> Result<()> {
+        let lease = self.meta.lease_grant(30, None).await?;
+        let (mut keeper, mut stream) = self.meta.lease_keep_alive(lease.id()).await?;
+        keeper.keep_alive().await?;
+
+        tokio::spawn(async move {
+            loop {
+                keeper.keep_alive().await.unwrap();
+                if let Some(resp) = stream.message().await.unwrap() {
+                    debug!(
+                        "keepalive stream message: id={} ttl={}",
+                        resp.id(),
+                        resp.ttl()
+                    )
                 }
+
+                tokio::time::sleep(time::Duration::from_secs(15)).await;
             }
+        });
 
-            Err(err) => ReadResponse {
-                value: String::new(),
-                ts: 0,
-                status: Some(err),
-            },
-        };
-
-        Ok(Response::new(response))
-    }
-
-    async fn set(&self, request: Request<WriteRequest>) -> Result<Response<WriteResponse>, Status> {
-        let request = request.into_inner();
-
-        let response = match self
-            .mem_table
-            .set(
-                request.key,
-                Value {
-                    timestamp: request.ts,
-                    value: request.value,
-                },
+        info!("register...");
+        self.meta
+            .put(
+                format!("{}/{}", COMPUTE_SERVICE_PREFIX, self.info.id),
+                self.info.addr.as_str(),
+                Some(PutOptions::new().with_lease(lease.id())),
             )
-            .await
-        {
-            Ok(_) => WriteResponse {
-                status: Some(build_status(ErrorCode::Ok, "")),
-            },
-            Err(err) => WriteResponse { status: Some(err) },
-        };
+            .await?;
 
-        Ok(Response::new(response))
+        Ok(())
     }
 
-    async fn remove(
-        &self,
-        request: Request<WriteRequest>,
-    ) -> Result<Response<WriteResponse>, Status> {
-        let request = request.into_inner();
+    pub async fn start(self) -> Result<()> {
+        info!("start service...");
+        Server::builder()
+            .add_service(KeyValueServer::new(self.kv))
+            .serve(self.info.addr.parse()?)
+            .await?;
 
-        let response = match self.mem_table.remove(&request.key).await {
-            Ok(_) => WriteResponse {
-                status: Some(build_status(ErrorCode::Ok, "")),
-            },
-            Err(err) => WriteResponse { status: Some(err) },
-        };
-
-        Ok(Response::new(response))
+        Ok(())
     }
 }

@@ -3,14 +3,14 @@ syntax = "proto3";
 package node;
 option go_package = "github.com/CyKV-01/CyberKV/proto";
 
-enum NodeType {
-    Invalid = 0;
-    ComputeNode = 1;
-    StorageNode = 2;
-}
+// enum NodeType {
+//     Invalid = 0;
+//     ComputeNode = 1;
+//     StorageNode = 2;
+// }
 
 message NodeInfo {
-    uint32 id = 1;
-    NodeType type = 2;
-    string addr = 3;
+    string id = 1;
+    // NodeType type = 2;
+    string addr = 2;
 }

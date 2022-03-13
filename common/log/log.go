@@ -7,6 +7,19 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+func init() {
+	config := zap.NewProductionConfig()
+	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	config.OutputPaths = []string{"stdout", "/tmp/coordinator.log"}
+	
+	logger, err := config.Build()
+	if err != nil {
+		panic(err)
+	}
+
+	zap.ReplaceGlobals(logger)
+}
+
 func Info(msg string, fields ...zapcore.Field) {
 	zap.L().Info(msg, fields...)
 }
