@@ -7,6 +7,11 @@ import (
 	"github.com/yah01/CyberKV/proto"
 )
 
+type VersionedNodeInfo struct {
+	proto.NodeInfo
+	Version int64
+}
+
 type Node interface {
 	// GetId() common.NodeID
 	GetSlots() []common.SlotID
@@ -17,10 +22,12 @@ type Node interface {
 	// GetCpuPercent() float32
 
 	AssignSlots(slots []*SlotInfo) error
+
+	GetInfo() *VersionedNodeInfo
 }
 
 type baseNode struct {
-	info *proto.NodeInfo
+	info *VersionedNodeInfo
 
 	rwmutex             sync.RWMutex // guard fields below
 	serveSlots          map[common.SlotID]*SlotInfo
@@ -51,4 +58,8 @@ func (node *baseNode) AssignSlots(slots []*SlotInfo) error {
 	}
 
 	return nil
+}
+
+func (node *baseNode) GetInfo() *VersionedNodeInfo {
+	return node.info
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	etcdcli "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -75,57 +76,73 @@ func (coord *Coordinator) Register() {
 
 	resp, err := coord.etcdClient.Grant(ctx, common.DefaultTTL)
 	if err != nil {
+		log.Errorf("failed to grant a lease, err=%v", err)
 		panic(err)
 	}
 
 	_, err = coord.etcdClient.KeepAlive(ctx, resp.ID)
 	if err != nil {
+		log.Errorf("failed to keep alive a lease, err=%v", err)
 		panic(err)
 	}
 
 	infoBytes, err := json.Marshal(coord.info)
 	if err != nil {
+		log.Errorf("failed to marshal info, err=%v", err)
 		panic(err)
 	}
 
 	log.Info("register coordinator",
 		zap.String("id", coord.id.String()),
 		zap.String("addr", coord.info.Addr))
-	_, err = coord.etcdClient.Put(ctx, path.Join(common.ServicePrefix, "coordinator", coord.id.String()), string(infoBytes))
+	_, err = coord.etcdClient.Put(ctx, path.Join(common.ServicePrefix, "coordinator", coord.id.String()), string(infoBytes),
+		etcdcli.WithLease(resp.ID))
 	if err != nil {
+		log.Errorf("failed to register, err=%v", err)
 		panic(err)
 	}
 }
 
 func (coord *Coordinator) watchCluster() {
 	log.Info("start watching cluster...")
+
 	watchCh := coord.etcdClient.Watch(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
+
+	resp, err := coord.etcdClient.Get(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
+	if err != nil {
+		log.Errorf("failed to get cluster from etcd, err=%v", err)
+		panic(err)
+	}
+
+	log.Infof("found %d nodes", len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		coord.handleWatchEvent(kv)
+	}
 
 	for resp := range watchCh {
 		for _, event := range resp.Events {
 			if event.Type == etcdcli.EventTypePut {
-				var nodeInfo proto.NodeInfo
-				nodeInfo.Id = string(event.Kv.Key)
-				nodeInfo.Addr = string(event.Kv.Value)
-				// err := json.Unmarshal(event.Kv.Value, &nodeInfo)
-				// if err != nil {
-				// 	log.Warn("failed to watch new node regisering", zap.Error(err))
-				// 	continue
-				// }
-
-				if bytes.Contains(event.Kv.Key, []byte("compute")) {
-					log.Info("add new compute node",
-						zap.String("id", nodeInfo.Id),
-						zap.String("addr", nodeInfo.Addr))
-					coord.computeCluster.AddNode(&nodeInfo)
-				} else if bytes.Contains(event.Kv.Key, []byte("storage")) {
-					log.Info("add new storage node",
-						zap.String("id", nodeInfo.Id),
-						zap.String("addr", nodeInfo.Addr))
-					coord.storageCluster.AddNode(&nodeInfo)
-				}
-
+				coord.handleWatchEvent(event.Kv)
 			}
 		}
+	}
+}
+
+func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
+	var nodeInfo VersionedNodeInfo
+	nodeInfo.Id = string(kv.Key)
+	nodeInfo.Addr = string(kv.Value)
+	nodeInfo.Version = kv.CreateRevision
+
+	if bytes.Contains(kv.Key, []byte("compute")) {
+		log.Info("add new compute node",
+			zap.String("id", nodeInfo.Id),
+			zap.String("addr", nodeInfo.Addr))
+		coord.computeCluster.AddNode(&nodeInfo)
+	} else if bytes.Contains(kv.Key, []byte("storage")) {
+		log.Info("add new storage node",
+			zap.String("id", nodeInfo.Id),
+			zap.String("addr", nodeInfo.Addr))
+		coord.storageCluster.AddNode(&nodeInfo)
 	}
 }

@@ -25,7 +25,7 @@ type SlotInfo struct {
 }
 
 type Cluster interface {
-	AddNode(*proto.NodeInfo)
+	AddNode(*VersionedNodeInfo)
 	AssignSlotsBackground()
 	AssignSlots(slots []*SlotInfo) (int, error)
 	GetNodes() []Node
@@ -62,12 +62,17 @@ func NewBaseCluster(replicaNum, readQuorum, writeQuorum int) *baseCluster {
 	}
 }
 
-func (cluster *baseCluster) AddNode(info *proto.NodeInfo) {
+func (cluster *baseCluster) AddNode(info *VersionedNodeInfo) {
 	cluster.rwmutex.Lock()
 	defer cluster.rwmutex.Unlock()
 
-	cluster.nodes[common.NodeID(info.Id)] = &baseNode{
-		info: info,
+	old, ok := cluster.nodes[common.NodeID(info.Id)]
+	if !ok || old.GetInfo().Version < info.Version {
+		if old.GetInfo().Version < info.Version {
+			cluster.nodes[common.NodeID(info.Id)] = &baseNode{
+				info: info,
+			}
+		}
 	}
 }
 
