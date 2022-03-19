@@ -68,10 +68,8 @@ func (cluster *baseCluster) AddNode(info *VersionedNodeInfo) {
 
 	old, ok := cluster.nodes[common.NodeID(info.Id)]
 	if !ok || old.GetInfo().Version < info.Version {
-		if old.GetInfo().Version < info.Version {
-			cluster.nodes[common.NodeID(info.Id)] = &baseNode{
-				info: info,
-			}
+		cluster.nodes[common.NodeID(info.Id)] = &baseNode{
+			info: info,
 		}
 	}
 }
