@@ -5,6 +5,7 @@ import (
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/proto"
+	"google.golang.org/grpc"
 )
 
 type VersionedNodeInfo struct {
@@ -21,7 +22,7 @@ type Node interface {
 	// GetCap() uint64
 	// GetCpuPercent() float32
 
-	AssignSlots(slots []*SlotInfo) error
+	AssignSlots(slots []common.SlotID) error
 
 	GetInfo() *VersionedNodeInfo
 }
@@ -30,11 +31,29 @@ type baseNode struct {
 	info *VersionedNodeInfo
 
 	rwmutex             sync.RWMutex // guard fields below
-	serveSlots          map[common.SlotID]*SlotInfo
+	serveSlots          map[common.SlotID]struct{}
 	storageUsage        uint64
 	storageUsagePercent float32
 	cap                 uint64 // not guard, cap field is read-only
 	cpuPercent          float32
+
+	proto.KeyValueClient
+}
+
+func NewBaseNode(info *VersionedNodeInfo) (*baseNode, error) {
+	conn, err := grpc.Dial(info.Addr, grpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+
+	kvClient := proto.NewKeyValueClient(conn)
+
+	return &baseNode{
+		info:           info,
+		rwmutex:        sync.RWMutex{},
+		serveSlots:     make(map[common.SlotID]struct{}),
+		KeyValueClient: kvClient,
+	}, nil
 }
 
 func (node *baseNode) GetSlots() []common.SlotID {
@@ -49,12 +68,12 @@ func (node *baseNode) GetSlots() []common.SlotID {
 	return slots
 }
 
-func (node *baseNode) AssignSlots(slots []*SlotInfo) error {
+func (node *baseNode) AssignSlots(slots []common.SlotID) error {
 	node.rwmutex.Lock()
 	defer node.rwmutex.Unlock()
 
 	for _, slot := range slots {
-		node.serveSlots[slot.Id] = slot
+		node.serveSlots[slot] = struct{}{}
 	}
 
 	return nil
@@ -62,4 +81,34 @@ func (node *baseNode) AssignSlots(slots []*SlotInfo) error {
 
 func (node *baseNode) GetInfo() *VersionedNodeInfo {
 	return node.info
+}
+
+type ComputeNode struct {
+	*baseNode
+}
+
+func NewComputeNode(info *VersionedNodeInfo) (ComputeNode, error) {
+	baseNode, err := NewBaseNode(info)
+	if err != nil {
+		return ComputeNode{}, err
+	}
+	node := ComputeNode{
+		baseNode: baseNode,
+	}
+	return node, nil
+}
+
+type StorageNode struct {
+	*baseNode
+}
+
+func NewStorageNode(info *VersionedNodeInfo) (StorageNode, error) {
+	baseNode, err := NewBaseNode(info)
+	if err != nil {
+		return StorageNode{}, err
+	}
+	node := StorageNode{
+		baseNode: baseNode,
+	}
+	return node, nil
 }

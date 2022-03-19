@@ -8,7 +8,6 @@ import (
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
-	"github.com/yah01/CyberKV/proto"
 	"go.uber.org/zap"
 )
 
@@ -19,62 +18,65 @@ const (
 	DefaultReadQuorum   = 2
 )
 
-type SlotInfo struct {
+type SlotInfo[T Node] struct {
 	Id    common.SlotID
-	Nodes []Node
+	Nodes []T
 }
 
-type Cluster interface {
+type ClusterI[T Node] interface {
 	AddNode(*VersionedNodeInfo)
 	AssignSlotsBackground()
-	AssignSlots(slots []*SlotInfo) (int, error)
-	GetNodes() []Node
+	AssignSlots(slots []*SlotInfo[T])
+	GetNodes() []T
 	// GetNode(id common.NodeID) Node
-	GetNodesBySlot(slot common.SlotID) []Node
+	GetNodesBySlot(slot common.SlotID) []T // return nil if no such slot
 	// AssignSlotsBackground()
 }
 
-type baseCluster struct {
-	slots            map[common.SlotID]*SlotInfo
+type Cluster[T Node] struct {
+	slots            map[common.SlotID]*SlotInfo[T]
 	scheduleTimer    time.Timer
-	scheduleNotifier chan []*SlotInfo
+	scheduleNotifier chan []common.SlotID
 
 	replicaNum  int
 	readQuorum  int
 	writeQuorum int
 
-	nodes   map[common.NodeID]Node
+	nodes   map[common.NodeID]T
 	rwmutex sync.RWMutex
 }
 
-func NewBaseCluster(replicaNum, readQuorum, writeQuorum int) *baseCluster {
-	return &baseCluster{
-		slots:            make(map[common.SlotID]*SlotInfo),
+func NewCluster[T Node](replicaNum, readQuorum, writeQuorum int) *Cluster[T] {
+	return &Cluster[T]{
+		slots:            make(map[common.SlotID]*SlotInfo[T]),
 		scheduleTimer:    *time.NewTimer(time.Second),
-		scheduleNotifier: make(chan []*SlotInfo, 32),
+		scheduleNotifier: make(chan []common.SlotID, 32),
 
 		replicaNum:  replicaNum,
 		readQuorum:  readQuorum,
 		writeQuorum: writeQuorum,
 
-		nodes:   make(map[common.NodeID]Node),
+		nodes:   make(map[common.NodeID]T),
 		rwmutex: sync.RWMutex{},
 	}
 }
 
-func (cluster *baseCluster) AddNode(info *VersionedNodeInfo) {
+func (cluster *Cluster[T]) AddNode(node T) {
 	cluster.rwmutex.Lock()
 	defer cluster.rwmutex.Unlock()
 
+	info := node.GetInfo()
 	old, ok := cluster.nodes[common.NodeID(info.Id)]
 	if !ok || old.GetInfo().Version < info.Version {
-		cluster.nodes[common.NodeID(info.Id)] = &baseNode{
-			info: info,
-		}
+		cluster.nodes[common.NodeID(info.Id)] = node
 	}
 }
 
-func (cluster *baseCluster) AssignSlots(slots []*SlotInfo) (int, error) {
+func (cluster *Cluster[T]) AssignSlots(slots []common.SlotID) {
+	cluster.scheduleNotifier <- slots
+}
+
+func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) (int, error) {
 	nodes := cluster.GetNodes()
 	sort.Slice(nodes, func(i, j int) bool {
 		return len(nodes[i].GetSlots()) < len(nodes[j].GetSlots())
@@ -89,22 +91,37 @@ func (cluster *baseCluster) AssignSlots(slots []*SlotInfo) (int, error) {
 	assignedSlotCount := 0
 	for i := 0; i < len(slots) && i < len(nodes); i = j {
 		node := nodes[nodeIdx]
-		j := i + 1
+		j = i + 1
 		if j > len(slots) {
 			j = len(slots)
 		}
 
-		err := node.AssignSlots(slots[i:j])
+		log.Infof("schedule slots=%+v to node=%+v", slots, node)
+		scheduleSlots := slots[i:j]
+		err := node.AssignSlots(scheduleSlots)
 		if err != nil {
 			return i, err
 		}
+		for _, slot := range scheduleSlots {
+			slotInfo, ok := cluster.slots[slot]
+			if !ok {
+				slotInfo = &SlotInfo[T]{
+					Id:    slot,
+					Nodes: make([]T, 0, 1),
+				}
+				cluster.slots[slot] = slotInfo
+			}
+
+			slotInfo.Nodes = append(slotInfo.Nodes, node)
+		}
+
 		assignedSlotCount += j - i
 	}
 
 	return assignedSlotCount, nil
 }
 
-func (cluster *baseCluster) GetNodes() []Node {
+func (cluster *Cluster[T]) GetNodes() []T {
 	// excludedNodesMap := make(map[common.NodeID]bool, len(excludedNodes))
 	// for _, node := range excludedNodes {
 	// 	excludedNodesMap[node] = true
@@ -113,7 +130,7 @@ func (cluster *baseCluster) GetNodes() []Node {
 	cluster.rwmutex.RLock()
 	defer cluster.rwmutex.RUnlock()
 
-	nodes := make([]Node, 0, len(cluster.nodes))
+	nodes := make([]T, 0, len(cluster.nodes))
 	for _, node := range cluster.nodes {
 		nodes = append(nodes, node)
 	}
@@ -128,21 +145,24 @@ func (cluster *baseCluster) GetNodes() []Node {
 // 	return cluster.nodes[id]
 // }
 
-func (cluster *baseCluster) GetNodesBySlot(slot common.SlotID) []Node {
+func (cluster *Cluster[T]) GetNodesBySlot(slot common.SlotID) []T {
 	slotInfo, ok := cluster.slots[slot]
 	if !ok {
 		return nil
 	}
 
+	log.Infof("slot=%+v", slotInfo)
+
 	return slotInfo.Nodes
 }
 
-func (cluster *baseCluster) AssignSlotsBackground() {
-	var slots []*SlotInfo
-	for ; true; time.Sleep(time.Second) {
+func (cluster *Cluster[T]) AssignSlotsBackground() {
+	var slots []common.SlotID
+	for {
 		select {
 		case <-cluster.scheduleTimer.C:
 			slots = cluster.getUnassignedSlots()
+			cluster.scheduleTimer.Reset(time.Second)
 
 		case slots = <-cluster.scheduleNotifier:
 		}
@@ -152,7 +172,7 @@ func (cluster *baseCluster) AssignSlotsBackground() {
 		}
 
 		log.Infof("schedule slots=%+v", slots)
-		n, err := cluster.AssignSlots(slots)
+		n, err := cluster.assignSlots(slots)
 		if n > 0 {
 			log.Info("scheduled slots", zap.Int("succeed", n))
 		}
@@ -163,43 +183,14 @@ func (cluster *baseCluster) AssignSlotsBackground() {
 }
 
 // Only created slots
-func (cluster *baseCluster) getUnassignedSlots() []*SlotInfo {
-	unassignedSlots := make([]*SlotInfo, 0)
+func (cluster *Cluster[T]) getUnassignedSlots() []common.SlotID {
+	unassignedSlots := make([]common.SlotID, 0)
 
-	for _, slot := range cluster.slots {
-		if len(slot.Nodes) < cluster.replicaNum {
+	for slot, info := range cluster.slots {
+		if len(info.Nodes) < cluster.replicaNum {
 			unassignedSlots = append(unassignedSlots, slot)
 		}
 	}
 
 	return unassignedSlots
-}
-
-type ComputeCluster struct {
-	*baseCluster
-}
-
-func NewComputeCluster(replicaNum, readQuorum, writeQuorum int) *ComputeCluster {
-	return &ComputeCluster{
-		baseCluster: NewBaseCluster(replicaNum, readQuorum, writeQuorum),
-	}
-}
-
-type ComputeNode struct {
-	*baseNode
-	proto.KeyValueClient
-}
-
-type StorageCluster struct {
-	*baseCluster
-}
-
-func NewStorageCluster(replicaNum, readQuorum, writeQuorum int) *StorageCluster {
-	return &StorageCluster{
-		baseCluster: NewBaseCluster(replicaNum, readQuorum, writeQuorum),
-	}
-}
-
-type StorageNode struct {
-	*baseNode
 }

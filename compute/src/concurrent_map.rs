@@ -8,6 +8,11 @@ use tokio::sync::RwLock;
 
 type Bucket<K, V> = Arc<RwLock<BTreeMap<K, V>>>;
 pub type MemTable = ConcurrentMap<String, Value>;
+
+fn new_bucket() -> Bucket<String, Value> {
+    Arc::new(RwLock::new(BTreeMap::new()))
+}
+
 #[derive(Debug)]
 pub struct ConcurrentMap<K, V> {
     buckets: Arc<Vec<Bucket<K, V>>>,
@@ -15,8 +20,12 @@ pub struct ConcurrentMap<K, V> {
 
 impl ConcurrentMap<String, Value> {
     pub fn new() -> Self {
+        let mut buckets = Vec::with_capacity(12);
+        for _ in 0..buckets.capacity() {
+            buckets.push(new_bucket());
+        }
         Self {
-            buckets: Arc::new(Vec::new()),
+            buckets: Arc::new(buckets),
         }
     }
 

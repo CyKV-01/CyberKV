@@ -16,6 +16,7 @@ import (
 	etcdcli "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 type Coordinator struct {
@@ -27,8 +28,8 @@ type Coordinator struct {
 
 	etcdClient *etcdcli.Client
 
-	computeCluster Cluster
-	storageCluster Cluster
+	computeCluster *Cluster[ComputeNode]
+	storageCluster *Cluster[StorageNode]
 }
 
 func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
@@ -44,8 +45,8 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		id:             uuid.New(),
 		info:           &nodeInfo,
 		etcdClient:     etcdClient,
-		computeCluster: NewComputeCluster(1, 1, 1),
-		storageCluster: NewStorageCluster(replicaNum, readQuorum, writeQuorum),
+		computeCluster: NewCluster[ComputeNode](1, 1, 1),
+		storageCluster: NewCluster[StorageNode](replicaNum, readQuorum, writeQuorum),
 	}
 }
 
@@ -63,7 +64,9 @@ func (coord *Coordinator) Start() {
 	}
 
 	server := grpc.NewServer()
+
 	proto.RegisterKeyValueServer(server, coord)
+	reflection.Register(server)
 	err = server.Serve(listener)
 	if err != nil {
 		panic(err)
@@ -80,7 +83,7 @@ func (coord *Coordinator) Register() {
 		panic(err)
 	}
 
-	_, err = coord.etcdClient.KeepAlive(ctx, resp.ID)
+	_, err = coord.etcdClient.KeepAlive(context.Background(), resp.ID)
 	if err != nil {
 		log.Errorf("failed to keep alive a lease, err=%v", err)
 		panic(err)
@@ -138,11 +141,23 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 		log.Info("add new compute node",
 			zap.String("id", nodeInfo.Id),
 			zap.String("addr", nodeInfo.Addr))
-		coord.computeCluster.AddNode(&nodeInfo)
+
+		node, err := NewComputeNode(&nodeInfo)
+		if err != nil {
+			log.Errorf("failed to create node, err=v", err)
+			return
+		}
+		coord.computeCluster.AddNode(node)
 	} else if bytes.Contains(kv.Key, []byte("storage")) {
 		log.Info("add new storage node",
 			zap.String("id", nodeInfo.Id),
 			zap.String("addr", nodeInfo.Addr))
-		coord.storageCluster.AddNode(&nodeInfo)
+
+		node, err := NewStorageNode(&nodeInfo)
+		if err != nil {
+			log.Errorf("failed to create node, err=v", err)
+			return
+		}
+		coord.storageCluster.AddNode(node)
 	}
 }
