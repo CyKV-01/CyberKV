@@ -10,12 +10,14 @@ import (
 func init() {
 	config := zap.NewProductionConfig()
 	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
-	config.OutputPaths = []string{"stdout", "/tmp/coordinator.log"}
-	
+	config.OutputPaths = []string{"stderr"}
+
 	logger, err := config.Build()
 	if err != nil {
 		panic(err)
 	}
+
+	logger = logger.WithOptions(zap.AddCallerSkip(1))
 
 	zap.ReplaceGlobals(logger)
 }
