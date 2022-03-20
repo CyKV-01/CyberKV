@@ -4,6 +4,7 @@ package kvs;
 option go_package = "github.com/CyKV-01/CyberKV/proto";
 
 import "status.proto";
+import "node.proto";
 
 service KeyValue {
     rpc Get(ReadRequest) returns (ReadResponse) {}
@@ -18,6 +19,8 @@ message ReadOption {
 message ReadRequest {
     string key = 1;
     ReadOption option = 2;
+    
+    repeated node.NodeInfo info = 5;
 }
 
 message ReadResponse {
@@ -35,7 +38,9 @@ message WriteRequest {
     string value = 2;
     bool is_remove = 3;
     uint64 ts = 4;
-    WriteOption option = 5;;
+    WriteOption option = 5;
+
+    repeated node.NodeInfo info = 7;
 }
 
 message WriteResponse {

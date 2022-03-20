@@ -1,34 +1,52 @@
 package storage
 
 import (
-	"context"
+	"net"
+	"sync"
 
 	"github.com/minio/minio-go/v7"
+	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	etcdcli "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 const SSTableRootDir = "data"
 
 type StorageNode struct {
+	*common.BaseNode
 	proto.UnimplementedKeyValueServer
 
-	minioClient *minio.Client
+	walMutex sync.Mutex
+	wals     map[common.SlotID]*LogWriter
+	store    *minio.Client
 }
 
-func NewStorageNode(minioClient *minio.Client) *StorageNode {
+func NewStorageNode(addr string, etcd *etcdcli.Client, minio *minio.Client) *StorageNode {
 	return &StorageNode{
-		minioClient: minioClient,
+		BaseNode: common.NewBaseNode(addr, etcd),
+		walMutex: sync.Mutex{},
+		wals:     make(map[common.SlotID]*LogWriter),
+		store:    minio,
 	}
 }
 
-func (node *StorageNode) Get(context.Context, *proto.ReadRequest) (*proto.ReadResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
-}
-func (node *StorageNode) Set(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Set not implemented")
-}
-func (node *StorageNode) Remove(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Remove not implemented")
+func (node *StorageNode) Start() {
+	log.Info("coordinator starting...")
+
+	listener, err := net.Listen("tcp", node.Info.Addr)
+	if err != nil {
+		panic(err)
+	}
+
+	server := grpc.NewServer()
+
+	proto.RegisterKeyValueServer(server, node)
+	reflection.Register(server)
+	err = server.Serve(listener)
+	if err != nil {
+		panic(err)
+	}
 }
