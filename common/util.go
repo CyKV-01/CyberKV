@@ -31,5 +31,3 @@ var uniqueId int64
 func GenerateUniqueId() int64 {
 	return atomic.AddInt64(&uniqueId, 1)
 }
-
-func PackRecord()
