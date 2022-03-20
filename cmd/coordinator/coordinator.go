@@ -14,6 +14,6 @@ func main() {
 	}
 
 	coord := coordinator.NewCoordinator(etcdClient, "[::]:4567")
-	coord.Register()
+	coord.Register("coordinator")
 	coord.Start()
 }

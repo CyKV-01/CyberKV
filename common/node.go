@@ -35,7 +35,7 @@ func NewBaseNode(addr string, etcd *etcdcli.Client) *BaseNode {
 	}
 }
 
-func (node *BaseNode) Register() {
+func (node *BaseNode) Register(name string) {
 	ctx := context.Background()
 	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
 
@@ -57,10 +57,11 @@ func (node *BaseNode) Register() {
 		panic(err)
 	}
 
-	log.Info("register coordinator",
+	log.Info("register",
+		zap.String("node", name),
 		zap.String("id", node.Info.Id),
 		zap.String("addr", node.Info.Addr))
-	_, err = node.Etcd.Put(ctx, path.Join(ServicePrefix, "coordinator", node.Info.Id), string(infoBytes),
+	_, err = node.Etcd.Put(ctx, path.Join(ServicePrefix, name, node.Info.Id), string(infoBytes),
 		etcdcli.WithLease(resp.ID))
 	if err != nil {
 		log.Errorf("failed to register, err=%v", err)

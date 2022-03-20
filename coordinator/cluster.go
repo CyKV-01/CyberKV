@@ -23,15 +23,15 @@ type SlotInfo[T Node] struct {
 	Nodes []T
 }
 
-type ClusterI[T Node] interface {
-	AddNode(*VersionedNodeInfo)
-	AssignSlotsBackground()
-	AssignSlots(slots []*SlotInfo[T])
-	GetNodes() []T
-	// GetNode(id common.NodeID) Node
-	GetNodesBySlot(slot common.SlotID) []T // return nil if no such slot
-	// AssignSlotsBackground()
-}
+// type ClusterI[T Node] interface {
+// 	AddNode(*VersionedNodeInfo)
+// 	AssignSlotsBackground()
+// 	AssignSlots(slots []*SlotInfo[T])
+// 	GetNodes() []T
+// 	// GetNode(id common.NodeID) Node
+// 	GetNodesBySlot(slot common.SlotID) []T // return nil if no such slot
+// 	// AssignSlotsBackground()
+// }
 
 type Cluster[T Node] struct {
 	slots            map[common.SlotID]*SlotInfo[T]
