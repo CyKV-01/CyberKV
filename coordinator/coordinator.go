@@ -3,12 +3,8 @@ package coordinator
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net"
-	"path"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
@@ -20,13 +16,9 @@ import (
 )
 
 type Coordinator struct {
+	*common.BaseNode
 	proto.UnimplementedKeyValueServer
 	proto.UnimplementedCoordinatorServer
-
-	id   uuid.UUID
-	info *proto.NodeInfo
-
-	etcdClient *etcdcli.Client
 
 	computeCluster *Cluster[ComputeNode]
 	storageCluster *Cluster[StorageNode]
@@ -37,14 +29,8 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 	readQuorum := DefaultReadQuorum
 	writeQuorum := DefaultWriteQuorum
 
-	nodeInfo := proto.NodeInfo{
-		Addr: addr,
-	}
-
 	return &Coordinator{
-		id:             uuid.New(),
-		info:           &nodeInfo,
-		etcdClient:     etcdClient,
+		BaseNode:       common.NewBaseNode(addr, etcdClient),
 		computeCluster: NewCluster[ComputeNode](1, 1, 1),
 		storageCluster: NewCluster[StorageNode](replicaNum, readQuorum, writeQuorum),
 	}
@@ -53,12 +39,11 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 func (coord *Coordinator) Start() {
 	log.Info("coordinator starting...")
 
-	coord.Register()
 	go coord.watchCluster()
 	go coord.computeCluster.AssignSlotsBackground()
 	go coord.storageCluster.AssignSlotsBackground()
 
-	listener, err := net.Listen("tcp", coord.info.Addr)
+	listener, err := net.Listen("tcp", coord.Info.Addr)
 	if err != nil {
 		panic(err)
 	}
@@ -73,45 +58,12 @@ func (coord *Coordinator) Start() {
 	}
 }
 
-func (coord *Coordinator) Register() {
-	ctx := context.Background()
-	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
-
-	resp, err := coord.etcdClient.Grant(ctx, common.DefaultTTL)
-	if err != nil {
-		log.Errorf("failed to grant a lease, err=%v", err)
-		panic(err)
-	}
-
-	_, err = coord.etcdClient.KeepAlive(context.Background(), resp.ID)
-	if err != nil {
-		log.Errorf("failed to keep alive a lease, err=%v", err)
-		panic(err)
-	}
-
-	infoBytes, err := json.Marshal(coord.info)
-	if err != nil {
-		log.Errorf("failed to marshal info, err=%v", err)
-		panic(err)
-	}
-
-	log.Info("register coordinator",
-		zap.String("id", coord.id.String()),
-		zap.String("addr", coord.info.Addr))
-	_, err = coord.etcdClient.Put(ctx, path.Join(common.ServicePrefix, "coordinator", coord.id.String()), string(infoBytes),
-		etcdcli.WithLease(resp.ID))
-	if err != nil {
-		log.Errorf("failed to register, err=%v", err)
-		panic(err)
-	}
-}
-
 func (coord *Coordinator) watchCluster() {
 	log.Info("start watching cluster...")
 
-	watchCh := coord.etcdClient.Watch(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
+	watchCh := coord.Etcd.Watch(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
 
-	resp, err := coord.etcdClient.Get(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
+	resp, err := coord.Etcd.Get(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
 	if err != nil {
 		log.Errorf("failed to get cluster from etcd, err=%v", err)
 		panic(err)
