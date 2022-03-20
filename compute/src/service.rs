@@ -6,7 +6,8 @@ use crate::proto::kvs::key_value_server::KeyValue;
 use crate::proto::kvs::{ReadRequest, ReadResponse, WriteRequest, WriteResponse};
 use crate::proto::status::{self, ErrorCode};
 use crate::storage::StorageLayer;
-use crate::types::{build_status, Value};
+use crate::types::Value;
+use crate::{consts, util::*};
 
 pub struct KvServer {
     mem_table: MemTable,
@@ -17,7 +18,11 @@ impl KvServer {
     pub fn new() -> Self {
         Self {
             mem_table: MemTable::new(),
-            storage_layer: StorageLayer::new(3, 2, 2),
+            storage_layer: StorageLayer::new(
+                consts::DEFAULT_REPLICA_NUM,
+                consts::DEFAULT_READ_QUORUM,
+                consts::DEFAULT_WRITE_QUORUM,
+            ),
         }
     }
 }
@@ -60,25 +65,24 @@ impl KeyValue for KvServer {
 
     async fn set(&self, request: Request<WriteRequest>) -> Result<Response<WriteResponse>, Status> {
         let request = request.into_inner();
+        let value = Value::new(request.ts, request.value.clone());
 
-        let response = match self
-            .mem_table
-            .set(
-                request.key,
-                Value {
-                    timestamp: request.ts,
-                    value: request.value,
-                },
-            )
-            .await
-        {
-            Ok(_) => WriteResponse {
-                status: Some(build_status(ErrorCode::Ok, "")),
-            },
-            Err(err) => WriteResponse { status: Some(err) },
+        // write memtable
+        let status = match self.mem_table.set(request.key.clone(), value).await {
+            Ok(_) => build_status(ErrorCode::Ok, ""),
+            Err(err) => err,
         };
 
-        Ok(Response::new(response))
+        // let mut is_sync = false;
+        // if let Some(option) = &request.option {
+        //     is_sync = option.sync;
+        // }
+
+        self.storage_layer.set(request).await?;
+
+        Ok(Response::new(WriteResponse {
+            status: Some(status),
+        }))
     }
 
     async fn remove(
