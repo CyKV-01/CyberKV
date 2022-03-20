@@ -13,8 +13,8 @@ build-storage:
 	@cd cmd/storage-node && go build -o storage-node
 
 clean: clean-data
-	@rm cmd/coordinator/coordinator cmd/storage-node/storage-node 
+	@rm cmd/coordinator/coordinator cmd/storage-node/storage-node -v
 	@cd compute && cargo clean
 
 clean-data:
-	@rm cmd/storage-node/data/*.log
+	@rm cmd/storage-node/data/*.log -v

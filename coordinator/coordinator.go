@@ -3,6 +3,7 @@ package coordinator
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net"
 
 	"github.com/yah01/CyberKV/common"
@@ -101,6 +102,13 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 		}
 		coord.computeCluster.AddNode(node)
 	} else if bytes.Contains(kv.Key, []byte("storage")) {
+		err := json.Unmarshal(kv.Value, &nodeInfo)
+		if err != nil {
+			log.Error("failed to unmarshal storage node info",
+				zap.Error(err))
+			return
+		}
+
 		log.Info("add new storage node",
 			zap.String("id", nodeInfo.Id),
 			zap.String("addr", nodeInfo.Addr))
