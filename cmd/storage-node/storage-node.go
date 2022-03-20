@@ -19,7 +19,7 @@ func main() {
 		panic(err)
 	}
 
-	storageNode := storage.NewStorageNode("[::]:4568", etcdClient, minioClient)
+	storageNode := storage.NewStorageNode("127.0.0.1:4568", etcdClient, minioClient)
 	storageNode.Register("storage")
 	storageNode.Start()
 }
