@@ -38,7 +38,7 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 			}}, nil
 	}
 
-	return nil, nil
+	return &proto.WriteResponse{}, nil
 }
 
 func (node *StorageNode) Remove(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {

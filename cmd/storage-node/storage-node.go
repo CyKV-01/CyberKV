@@ -20,6 +20,6 @@ func main() {
 	}
 
 	storageNode := storage.NewStorageNode("[::]:4568", etcdClient, minioClient)
-	storageNode.Register()
+	storageNode.Register("storage")
 	storageNode.Start()
 }
