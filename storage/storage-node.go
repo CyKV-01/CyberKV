@@ -34,7 +34,7 @@ func NewStorageNode(addr string, etcd *etcdcli.Client, minio *minio.Client) *Sto
 }
 
 func (node *StorageNode) Start() {
-	log.Info("coordinator starting...")
+	log.Info("storage node starting...")
 
 	listener, err := net.Listen("tcp", node.Info.Addr)
 	if err != nil {

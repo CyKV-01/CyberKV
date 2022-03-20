@@ -2,9 +2,9 @@ package storage
 
 import (
 	"os"
+	"path"
 
 	"github.com/yah01/CyberKV/common"
-	"github.com/yah01/CyberKV/common/log"
 )
 
 type LogWriter struct {
@@ -13,9 +13,15 @@ type LogWriter struct {
 
 func NewLogWritter(slot common.SlotID) *LogWriter {
 	id := common.GenerateUniqueId()
-	file, err := os.OpenFile(common.LogPath(slot, id), os.O_CREATE|os.O_APPEND, 0666)
+	logPath := common.LogPath(slot, id)
+
+	err := os.MkdirAll(path.Dir(logPath), 0777)
 	if err != nil {
-		log.Errorf("failed to open log file, err=%v", err)
+		panic(err)
+	}
+
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	if err != nil {
 		panic(err)
 	}
 
