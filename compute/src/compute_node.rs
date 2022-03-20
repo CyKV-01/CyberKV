@@ -11,7 +11,7 @@ use crate::proto::node::*;
 use crate::proto::status::{self, ErrorCode};
 use crate::service::{self, KvServer};
 use crate::storage::StorageLayer;
-use crate::types::build_status;
+use crate::util::*;
 use crate::types::Value;
 use etcd_client::{LeaseGrantOptions, PutOptions};
 use log::{debug, error, info, trace, warn};
@@ -38,6 +38,7 @@ impl ComputeNode {
                 addr: addr,
             },
             meta: meta,
+
             kv: KvServer::new(),
         }
     }

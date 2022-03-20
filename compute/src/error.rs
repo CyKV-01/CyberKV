@@ -1,7 +1,7 @@
 use std::net::AddrParseError;
 
 use crate::proto::status::{self, ErrorCode};
-use crate::types::build_status;
+use crate::util::*;
 
 pub type Result<T> = std::result::Result<T, status::Status>;
 
@@ -28,6 +28,15 @@ impl From<tonic::transport::Error> for status::Status {
         build_status(
             ErrorCode::IoError,
             format!("rpc failed, err={}", err).as_str(),
+        )
+    }
+}
+
+impl From<tonic::Status> for status::Status {
+    fn from(err: tonic::Status) -> Self {
+        build_status(
+            ErrorCode::IoError,
+            format!("rpc failed, msg={}", err.message()).as_str(),
         )
     }
 }

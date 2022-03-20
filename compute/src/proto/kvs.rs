@@ -9,6 +9,8 @@ pub struct ReadRequest {
     pub key: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub option: ::core::option::Option<ReadOption>,
+    #[prost(message, repeated, tag = "5")]
+    pub info: ::prost::alloc::vec::Vec<super::node::NodeInfo>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ReadResponse {
@@ -36,6 +38,8 @@ pub struct WriteRequest {
     pub ts: u64,
     #[prost(message, optional, tag = "5")]
     pub option: ::core::option::Option<WriteOption>,
+    #[prost(message, repeated, tag = "7")]
+    pub info: ::prost::alloc::vec::Vec<super::node::NodeInfo>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WriteResponse {

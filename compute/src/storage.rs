@@ -1,36 +1,46 @@
-use std::collections::HashMap;
-
 use futures::future::join_all;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tonic::transport::Channel;
+use tonic::{Response, Status};
 
+use crate::proto::kvs::{ReadRequest, WriteRequest, WriteResponse};
 use crate::proto::node::NodeInfo;
 use crate::types::Value;
 use crate::{
-    error::Result,
-    kvs::Kvs,
     proto::{
         kvs::{key_value_client::*, ReadResponse},
         status::ErrorCode,
     },
-    types::{build_status, calc_slot, SlotID},
+    types::SlotID,
+    util::*,
 };
 #[derive(Debug)]
 pub struct StorageNode {
     info: NodeInfo,
-    client: Option<KeyValueClient<Channel>>,
+    client: KeyValueClient<Channel>,
 }
 
 impl StorageNode {
-    pub async fn get(&self, key: &str) -> Result<Option<ReadResponse>> {
+    pub async fn new(info: NodeInfo) -> Result<Self, tonic::transport::Error> {
+        let client = KeyValueClient::connect(format!("http://{}", info.addr)).await?;
+        Ok(Self { info, client })
+    }
+
+    pub async fn get(&mut self, request: ReadRequest) -> Result<Response<ReadResponse>, Status> {
         todo!()
     }
 
-    pub async fn set(&self, key: String, value: String) -> Result<Option<String>> {
-        todo!()
+    pub async fn set(&mut self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
+        Ok(self.client.set(request).await?)
     }
 
-    pub async fn remove(&self, key: &str) -> Result<Option<String>> {
+    pub async fn remove(
+        &mut self,
+        request: WriteRequest,
+    ) -> Result<Response<WriteResponse>, Status> {
         todo!()
     }
 }
@@ -53,70 +63,126 @@ impl StorageLayer {
         }
     }
 
-    pub async fn get(&self, key: &str) -> Result<Option<Value>> {
-        let slot = calc_slot(key);
-        let slot_node_index = self.slot_node_index.read().await;
-        let nodes = slot_node_index.get(&slot);
+    pub async fn get(&self, request: ReadRequest) -> Result<Response<ReadResponse>, Status> {
+        // let slot = calc_slot(&request.key);
+        // let slot_node_index = self.slot_node_index.read().await;
+        // let nodes = slot_node_index.get(&slot);
 
-        match nodes {
-            Some(nodes) => {
-                if nodes.len() < self.read_quorum {
-                    return Err(build_status(ErrorCode::IoError, "no enough storage node"));
-                }
+        // if nodes.is_none() {
+        //     return Err(Status::failed_precondition("no storage node to serve"));
+        // }
 
-                let mut read_results = Vec::with_capacity(nodes.len());
-                for node in nodes {
-                    read_results.push(node.get(key));
-                }
+        // let nodes = nodes.unwrap();
 
-                // TODO: wait until reaching read quorum
-                let results = join_all(read_results).await;
+        // if nodes.len() < self.read_quorum {
+        //     return Err(Status::failed_precondition("no enough storage node"));
+        // }
 
-                let mut read_counts = 0;
-                let mut value = Value {
-                    timestamp: 0,
-                    value: String::new(),
-                };
-                for result in results {
-                    if let Ok(Some(result)) = result {
-                        if result.ts > value.timestamp {
-                            value.timestamp = result.ts;
-                            value.value = result.value;
-                        }
+        // let mut read_results = Vec::with_capacity(nodes.len());
+        // for node in nodes {
+        //     read_results.push(node.get(request.clone()));
+        // }
 
-                        read_counts += 1;
-                        if read_counts >= self.read_quorum {
-                            break;
-                        }
-                    } else {
-                        continue;
-                    }
-                }
+        // // TODO: wait until reaching read quorum
+        // let results = join_all(read_results).await;
 
-                if read_counts < self.read_quorum {
-                    return Err(build_status(
-                        ErrorCode::IoError,
-                        "no enough storage node to reach read quorum",
-                    ));
-                }
+        // let mut read_counts = 0;
+        // let mut value = Value {
+        //     timestamp: 0,
+        //     value: String::new(),
+        // };
+        // for result in results {
+        //     if let Ok(result) = result {
+        //         let respones = result.into_inner();
+        //         if respones.ts > value.timestamp {
+        //             value.timestamp = respones.ts;
+        //             value.value = respones.value;
+        //         }
 
-                return Ok(Some(value));
-            }
+        //         read_counts += 1;
+        //         if read_counts >= self.read_quorum {
+        //             break;
+        //         }
+        //     } else {
+        //         continue;
+        //     }
+        // }
 
-            None => {
-                return Err(build_status(
-                    ErrorCode::IoError,
-                    "no available storage node",
-                ))
-            }
-        }
-    }
+        // if read_counts < self.read_quorum {
+        //     return Err(Status::failed_precondition(
+        //         "no enough storage node to reach read quorum",
+        //     ));
+        // }
 
-    pub async fn set(&self, key: String, value: Value) -> Result<Option<Value>> {
+        // return Ok(Response::new(ReadResponse {
+        //     value: value.value,
+        //     ts: value.timestamp,
+        //     status: None,
+        // }));
         todo!()
     }
 
-    pub async fn remove(&self, key: &str) -> Result<Option<Value>> {
+    pub async fn set(&self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
+        // let slot = calc_slot(&request.key);
+        let mut nodes = Vec::with_capacity(request.info.len());
+        for info in &request.info {
+            match StorageNode::new(info.clone()).await {
+                Ok(node) => nodes.push(node),
+                Err(err) => {
+                    return Err(Status::failed_precondition(format!(
+                        "failed to connect storage node, err={}",
+                        err
+                    )))
+                }
+            }
+        }
+
+        // let mut slot_node_index = self.slot_node_index.write().await;
+        // slot_node_index.insert(slot, nodes);
+        // let slot_node_index = self.slot_node_index.read().await;
+        // let nodes = slot_node_index.get_mut(&slot);
+
+        // if nodes.is_none() {
+        //     return Err(Status::failed_precondition("no available storage node"));
+        // }
+
+        // let nodes = nodes.unwrap();
+        if nodes.len() < self.write_quorum {
+            return Err(Status::failed_precondition("no enough storage node"));
+        }
+
+        let mut write_results = Vec::with_capacity(nodes.len());
+        for node in nodes.iter_mut() {
+            write_results.push(node.set(request.clone()));
+        }
+
+        // TODO: wait until reaching read quorum
+        let results = join_all(write_results).await;
+
+        let mut write_counts = 0;
+        for result in results {
+            if result.is_ok() {
+                write_counts += 1;
+                if write_counts >= self.write_quorum {
+                    break;
+                }
+            } else {
+                continue;
+            }
+        }
+
+        if write_counts < self.write_quorum {
+            return Err(Status::failed_precondition(
+                "no enough storage node to reach write quorum",
+            ));
+        }
+
+        return Ok(Response::new(WriteResponse {
+            status: Some(build_status(ErrorCode::Ok, "")),
+        }));
+    }
+
+    pub async fn remove(&self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
         todo!()
     }
 }
