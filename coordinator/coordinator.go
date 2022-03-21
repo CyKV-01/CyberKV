@@ -26,13 +26,13 @@ type Coordinator struct {
 }
 
 func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
-	replicaNum := DefaultReplicaNum
-	readQuorum := DefaultReadQuorum
-	writeQuorum := DefaultWriteQuorum
+	replicaNum := common.DefaultReplicaNum
+	readQuorum := common.DefaultReadQuorum
+	writeQuorum := common.DefaultWriteQuorum
 
 	return &Coordinator{
 		BaseNode:       common.NewBaseNode(addr, etcdClient),
-		computeCluster: NewCluster[ComputeNode](1, 1, 1),
+		computeCluster: NewCluster[ComputeNode](replicaNum, readQuorum, writeQuorum),
 		storageCluster: NewCluster[StorageNode](replicaNum, readQuorum, writeQuorum),
 	}
 }

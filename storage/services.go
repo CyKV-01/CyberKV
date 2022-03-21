@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/db"
 	"github.com/yah01/CyberKV/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -25,7 +26,7 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 	}
 	node.walMutex.Unlock()
 
-	batch := common.NewBatch()
+	batch := db.NewBatch()
 	batch.SetSequence(request.Ts)
 	batch.Put(request.Key, request.Value)
 

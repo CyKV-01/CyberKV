@@ -1,6 +1,9 @@
-package common
+package db
 
-import "github.com/yah01/CyberKV/common/binary"
+import (
+	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/binary"
+)
 
 const (
 	Full RecordType = iota + 1
@@ -22,7 +25,7 @@ type Record struct {
 
 func NewRecord(data []byte) *Record {
 	record := new(Record)
-	record.Checksum = CalcChecksum(data)
+	record.Checksum = common.CalcChecksum(data)
 	record.Length = uint16(len(data))
 	record.Type = Full
 	record.Data = data

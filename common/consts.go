@@ -6,6 +6,11 @@ const (
 	SlotNum = 32
 
 	ServicePrefix = "services"
+	SlotPrefix    = "slots"
 
 	DefaultTTL = 30
+
+	DefaultReplicaNum  = 1
+	DefaultReadQuorum  = 1
+	DefaultWriteQuorum = 1
 )

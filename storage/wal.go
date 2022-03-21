@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/db"
 )
 
 type LogWriter struct {
@@ -30,8 +31,8 @@ func NewLogWritter(slot common.SlotID) *LogWriter {
 	}
 }
 
-func (writer *LogWriter) Append(batch *common.Batch) error {
-	record := common.NewRecord(batch.Data())
+func (writer *LogWriter) Append(batch *db.Batch) error {
+	record := db.NewRecord(batch.Data())
 
 	_, err := writer.file.Write(record.BuildBytes())
 	if err != nil {

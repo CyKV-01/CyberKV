@@ -13,9 +13,6 @@ import (
 
 const (
 	MaxNodeUsagePercent = 0.8
-	DefaultReplicaNum   = 3
-	DefaultWriteQuorum  = 2
-	DefaultReadQuorum   = 2
 )
 
 type SlotInfo[T Node] struct {
@@ -47,8 +44,8 @@ type Cluster[T Node] struct {
 }
 
 func NewCluster[T Node](replicaNum, readQuorum, writeQuorum int) *Cluster[T] {
-	return &Cluster[T]{
-		slots:            make(map[common.SlotID]*SlotInfo[T]),
+	cluster := &Cluster[T]{
+		slots:            make(map[common.SlotID]*SlotInfo[T], common.SlotNum),
 		scheduleTimer:    *time.NewTimer(time.Second),
 		scheduleNotifier: make(chan []common.SlotID, 32),
 
@@ -59,6 +56,16 @@ func NewCluster[T Node](replicaNum, readQuorum, writeQuorum int) *Cluster[T] {
 		nodes:   make(map[common.NodeID]T),
 		rwmutex: sync.RWMutex{},
 	}
+
+	for i := 0; i < common.SlotNum; i++ {
+		slot := common.SlotID(i)
+		cluster.slots[slot] = &SlotInfo[T]{
+			Id:    slot,
+			Nodes: make([]T, 0, replicaNum),
+		}
+	}
+
+	return cluster
 }
 
 func (cluster *Cluster[T]) AddNode(node T) {

@@ -1,6 +1,9 @@
-package common
+package db
 
-import "github.com/yah01/CyberKV/common/binary"
+import (
+	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/binary"
+)
 
 const (
 	BatchHeaderSize = 8 // TimeStamp
@@ -21,7 +24,7 @@ func (batch *Batch) Put(key, value string) {
 	AppendDataWithLength(&batch.data, value)
 }
 
-func (batch *Batch) SetSequence(ts TimeStamp) {
+func (batch *Batch) SetSequence(ts common.TimeStamp) {
 	binary.Put(batch.data, ts)
 }
 
