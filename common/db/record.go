@@ -1,6 +1,9 @@
 package db
 
 import (
+	"bufio"
+	"io"
+
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/binary"
 )
@@ -31,6 +34,42 @@ func NewRecord(data []byte) *Record {
 	record.Data = data
 
 	return record
+}
+
+func NewRecordFromByteReader(reader *bufio.Reader) (*Record, error) {
+	var (
+		record Record
+		err    error
+	)
+
+	record.Checksum, err = binary.Read[uint32](reader)
+	if err != nil {
+		return nil, err
+	}
+
+	record.Length, err = binary.Read[uint16](reader)
+	if err == io.EOF {
+		err = io.ErrUnexpectedEOF
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	record.Type, err = binary.Read[uint8](reader)
+	if err == io.EOF {
+		err = io.ErrUnexpectedEOF
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	record.Data = make([]byte, record.Length)
+	_, err = io.ReadFull(reader, record.Data)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+
+	return &record, err
 }
 
 func (record *Record) BuildBytes() []byte {

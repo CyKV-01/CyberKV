@@ -11,18 +11,36 @@ import (
 
 func (coord *Coordinator) Get(ctx context.Context, request *proto.ReadRequest) (response *proto.ReadResponse, err error) {
 	slot := common.CalcSlotID(request.Key)
-
 	nodes := coord.computeCluster.GetNodesBySlot(slot)
-	if len(nodes) == 0 {
+	if len(nodes) < coord.computeCluster.readQuorum {
+		log.Warn("no enough compute node to serve",
+			zap.Int("nodes_num", len(nodes)),
+			zap.Int("read_quorum", coord.computeCluster.readQuorum))
 		return &proto.ReadResponse{
 			Status: &proto.Status{
 				ErrCode:    proto.ErrorCode_RetryLater,
-				ErrMessage: "No node to serve",
+				ErrMessage: "no enough compute node to serve",
 			},
 		}, nil
 	}
 
 	node := nodes[0]
+
+	storageNodes := coord.storageCluster.GetNodesBySlot(slot)
+	if len(storageNodes) == 0 {
+		log.Warn("no enough storage node to serve",
+			zap.Int("nodes_num", len(nodes)),
+			zap.Int("read_quorum", coord.computeCluster.readQuorum))
+		return &proto.ReadResponse{
+			Status: &proto.Status{
+				ErrCode:    proto.ErrorCode_RetryLater,
+				ErrMessage: "no enough storage node to serve",
+			},
+		}, nil
+	}
+	for _, node := range storageNodes {
+		request.Info = append(request.Info, &node.info.NodeInfo)
+	}
 
 	resp, err := node.Get(ctx, request)
 	if err != nil {
@@ -65,6 +83,8 @@ func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) 
 	for _, node := range storageNodes {
 		request.Info = append(request.Info, &node.info.NodeInfo)
 	}
+
+	request.Ts = coord.GenTs()
 
 	resp, err := node.Set(ctx, request)
 	if err != nil {

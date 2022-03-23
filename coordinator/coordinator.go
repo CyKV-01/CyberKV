@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/yah01/CyberKV/common"
@@ -27,6 +28,8 @@ type Coordinator struct {
 
 	computeCluster *Cluster[*ComputeNode]
 	storageCluster *Cluster[*StorageNode]
+
+	ts common.TimeStamp
 }
 
 func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
@@ -186,4 +189,8 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 		}
 		coord.storageCluster.AddNode(node)
 	}
+}
+
+func (coord *Coordinator) GenTs() common.TimeStamp {
+	return atomic.AddUint64(&coord.ts, 1)
 }

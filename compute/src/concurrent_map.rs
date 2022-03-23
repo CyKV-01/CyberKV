@@ -29,14 +29,14 @@ impl ConcurrentMap<String, Value> {
         }
     }
 
-    pub async fn get(&self, key: &str) -> Result<Option<Value>> {
+    pub async fn get(&self, key: &str) -> Option<Value> {
         let slot = hash(key) as usize % self.buckets.len();
 
         let bucket = self.buckets[slot].read().await;
 
         match bucket.get(key) {
-            Some(value) => Ok(Some(value.clone())),
-            None => Ok(None),
+            Some(value) => Some(value.clone()),
+            None => None,
         }
     }
 
