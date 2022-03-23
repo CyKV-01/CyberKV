@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"strings"
+	"time"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
@@ -16,13 +18,15 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+var _ common.Node = (*Coordinator)(nil)
+
 type Coordinator struct {
 	*common.BaseNode
 	proto.UnimplementedKeyValueServer
 	proto.UnimplementedCoordinatorServer
 
-	computeCluster *Cluster[ComputeNode]
-	storageCluster *Cluster[StorageNode]
+	computeCluster *Cluster[*ComputeNode]
+	storageCluster *Cluster[*StorageNode]
 }
 
 func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
@@ -32,15 +36,17 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 
 	return &Coordinator{
 		BaseNode:       common.NewBaseNode(addr, etcdClient),
-		computeCluster: NewCluster[ComputeNode](replicaNum, readQuorum, writeQuorum),
-		storageCluster: NewCluster[StorageNode](replicaNum, readQuorum, writeQuorum),
+		computeCluster: NewCluster[*ComputeNode](etcdClient, replicaNum, readQuorum, writeQuorum),
+		storageCluster: NewCluster[*StorageNode](etcdClient, replicaNum, readQuorum, writeQuorum),
 	}
 }
 
 func (coord *Coordinator) Start() {
 	log.Info("coordinator starting...")
 
-	go coord.watchCluster()
+	coord.watchCluster()
+	coord.Recovery()
+
 	go coord.computeCluster.AssignSlotsBackground()
 	go coord.storageCluster.AssignSlotsBackground()
 
@@ -59,29 +65,89 @@ func (coord *Coordinator) Start() {
 	}
 }
 
-func (coord *Coordinator) watchCluster() {
-	log.Info("start watching cluster...")
-
-	watchCh := coord.Etcd.Watch(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
-
-	resp, err := coord.Etcd.Get(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
+func (coord *Coordinator) Recovery() {
+	// Recovery service info
+	resp, err := coord.Meta.Get(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
 	if err != nil {
 		log.Errorf("failed to get cluster from etcd, err=%v", err)
 		panic(err)
 	}
 
-	log.Infof("found %d nodes", len(resp.Kvs))
+	log.Infof("found %d nodes, recovering...", len(resp.Kvs))
 	for _, kv := range resp.Kvs {
 		coord.handleWatchEvent(kv)
 	}
 
-	for resp := range watchCh {
-		for _, event := range resp.Events {
-			if event.Type == etcdcli.EventTypePut {
-				coord.handleWatchEvent(event.Kv)
-			}
+	coord.recoverySlotInfo()
+}
+
+func (coord *Coordinator) recoverySlotInfo() {
+	ctx := context.Background()
+	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
+	resp, err := coord.Meta.Get(ctx, common.SlotPrefix, etcdcli.WithPrefix())
+	if err != nil {
+		panic(err)
+	}
+	log.Infof("found %d slots, recovering...", len(resp.Kvs))
+
+	// etcd path: slots/{slot_id}/{compute/storage} -> NodeInfo
+	computeSlots := make(map[common.SlotID]*proto.SlotInfo, common.SlotNum)
+	storageSlots := make(map[common.SlotID]*proto.SlotInfo, common.SlotNum)
+	for _, kv := range resp.Kvs {
+		var info proto.SlotInfo
+
+		slot := common.GetSlotIdByEtcdPath(string(kv.Key))
+
+		err := json.Unmarshal(kv.Value, &info)
+		if err != nil {
+			panic(err)
+		}
+
+		if strings.Contains(string(kv.Key), "compute") {
+			computeSlots[slot] = &info
+		} else {
+			storageSlots[slot] = &info
 		}
 	}
+
+	for slot := 0; slot < common.SlotNum; slot++ {
+		var (
+			slotInfo *proto.SlotInfo
+			ok       bool
+		)
+
+		if slotInfo, ok = computeSlots[int16(slot)]; !ok {
+			slotInfo = &proto.SlotInfo{
+				Slot:  uint32(slot),
+				Nodes: make(map[string]*proto.NodeInfo),
+			}
+		}
+		coord.computeCluster.RecoverySlotInfo(slotInfo)
+
+		if slotInfo, ok = storageSlots[int16(slot)]; !ok {
+			slotInfo = &proto.SlotInfo{
+				Slot:  uint32(slot),
+				Nodes: make(map[string]*proto.NodeInfo),
+			}
+		}
+		coord.storageCluster.RecoverySlotInfo(slotInfo)
+	}
+}
+
+func (coord *Coordinator) watchCluster() {
+	log.Info("start watching cluster...")
+
+	watchCh := coord.Meta.Watch(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
+
+	go func() {
+		for resp := range watchCh {
+			for _, event := range resp.Events {
+				if event.Type == etcdcli.EventTypePut {
+					coord.handleWatchEvent(event.Kv)
+				}
+			}
+		}
+	}()
 }
 
 func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {

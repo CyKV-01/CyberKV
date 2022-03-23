@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"path"
+	"strconv"
+	"strings"
 	"sync/atomic"
 )
 
@@ -30,4 +32,24 @@ var uniqueId int64
 
 func GenerateUniqueId() int64 {
 	return atomic.AddInt64(&uniqueId, 1)
+}
+
+func GetSlotIdByEtcdPath(path string) SlotID {
+	slotStr := strings.Split(path, "/")[1]
+	slotId, err := strconv.ParseUint(slotStr, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	return SlotID(slotId)
+}
+
+func SliceContains[T comparable](slice []T, target T) bool {
+	for i := range slice {
+		if slice[i] == target {
+			return true
+		}
+	}
+
+	return false
 }

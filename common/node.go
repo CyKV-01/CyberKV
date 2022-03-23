@@ -14,12 +14,13 @@ import (
 )
 
 type Node interface {
-	Register()
+	Register(name string)
 	Start()
+	Recovery()
 }
 
 type BaseNode struct {
-	Etcd *etcdcli.Client
+	Meta *etcdcli.Client
 	Info *proto.NodeInfo
 }
 
@@ -31,7 +32,7 @@ func NewBaseNode(addr string, etcd *etcdcli.Client) *BaseNode {
 
 	return &BaseNode{
 		Info: info,
-		Etcd: etcd,
+		Meta: etcd,
 	}
 }
 
@@ -39,17 +40,32 @@ func (node *BaseNode) Register(name string) {
 	ctx := context.Background()
 	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
 
-	resp, err := node.Etcd.Grant(ctx, DefaultTTL)
+	resp, err := node.Meta.Grant(ctx, DefaultTTL)
 	if err != nil {
 		log.Errorf("failed to grant a lease, err=%v", err)
 		panic(err)
 	}
 
-	_, err = node.Etcd.KeepAlive(context.Background(), resp.ID)
+	keepAliveCtx := context.Background()
+	keepAliveStream, err := node.Meta.KeepAlive(keepAliveCtx, resp.ID)
 	if err != nil {
 		log.Errorf("failed to keep alive a lease, err=%v", err)
 		panic(err)
 	}
+	go func() {
+		for {
+			select {
+			case resp := <-keepAliveStream:
+				log.Debug("etcd keep alive response",
+					zap.Int64("id", int64(resp.ID)),
+					zap.Int64("ttl", resp.TTL))
+			case <-keepAliveCtx.Done():
+				log.Infof("etcd keep alive canceled",
+					zap.String("nodeId", node.Info.Id))
+				return
+			}
+		}
+	}()
 
 	infoBytes, err := json.Marshal(node.Info)
 	if err != nil {
@@ -61,7 +77,7 @@ func (node *BaseNode) Register(name string) {
 		zap.String("node", name),
 		zap.String("id", node.Info.Id),
 		zap.String("addr", node.Info.Addr))
-	_, err = node.Etcd.Put(ctx, path.Join(ServicePrefix, name, node.Info.Id), string(infoBytes),
+	_, err = node.Meta.Put(ctx, path.Join(ServicePrefix, name, node.Info.Id), string(infoBytes),
 		etcdcli.WithLease(resp.ID))
 	if err != nil {
 		log.Errorf("failed to register, err=%v", err)
