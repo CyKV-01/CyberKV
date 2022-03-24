@@ -46,15 +46,22 @@ impl KeyValue for KvServer {
 
     async fn set(&self, request: Request<WriteRequest>) -> Result<Response<WriteResponse>, Status> {
         let request = request.into_inner();
+        let key = request.key.clone();
         let value = Value::new(request.ts, request.value.clone());
 
+        // write WAL
+        let response = self.storage_layer.set(request).await?.into_inner();
+        if let Some(status) = &response.status {
+            if status.err_code != ErrorCode::Ok as i32 {
+                return Ok(Response::new(response));
+            }
+        }
+
         // write memtable
-        let status = match self.mem_table.set(request.key.clone(), value).await {
+        let status = match self.mem_table.set(key, value).await {
             Ok(_) => build_status(ErrorCode::Ok, ""),
             Err(err) => err,
         };
-
-        self.storage_layer.set(request).await?;
 
         Ok(Response::new(WriteResponse {
             status: Some(status),

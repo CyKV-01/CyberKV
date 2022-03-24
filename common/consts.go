@@ -8,7 +8,7 @@ const (
 	ServicePrefix = "services"
 	SlotPrefix    = "slots"
 
-	DefaultTTL = 30
+	DefaultTTL = 10
 
 	DefaultReplicaNum  = 1
 	DefaultReadQuorum  = 1

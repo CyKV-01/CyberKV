@@ -44,7 +44,7 @@ impl ComputeNode {
     }
 
     pub async fn register(&mut self) -> Result<()> {
-        let lease = self.meta.lease_grant(30, None).await?;
+        let lease = self.meta.lease_grant(10, None).await?;
         let (mut keeper, mut stream) = self.meta.lease_keep_alive(lease.id()).await?;
 
         tokio::spawn(async move {
@@ -58,7 +58,7 @@ impl ComputeNode {
                     )
                 }
 
-                tokio::time::sleep(time::Duration::from_secs(15)).await;
+                tokio::time::sleep(time::Duration::from_secs(3)).await;
             }
         });
 
