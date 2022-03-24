@@ -30,7 +30,7 @@ impl StorageNode {
     }
 
     pub async fn get(&mut self, request: ReadRequest) -> Result<Response<ReadResponse>, Status> {
-        todo!()
+        Ok(self.client.get(request).await?)
     }
 
     pub async fn set(&mut self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
