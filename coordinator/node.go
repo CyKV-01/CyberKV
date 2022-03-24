@@ -13,6 +13,13 @@ type VersionedNodeInfo struct {
 	Version int64
 }
 
+type NodeType int
+
+const (
+	ComputeNodeType NodeType = iota + 1
+	StorageNodeType
+)
+
 type Node interface {
 	// GetId() common.NodeID
 	GetSlots() []common.SlotID
@@ -21,6 +28,9 @@ type Node interface {
 	// GetPercent() float32
 	// GetCap() uint64
 	// GetCpuPercent() float32
+	GetNodeType() NodeType
+
+	HasSlot(common.SlotID) bool
 
 	AssignSlots(slots []common.SlotID) error
 
@@ -83,32 +93,49 @@ func (node *baseNode) GetInfo() *VersionedNodeInfo {
 	return node.info
 }
 
+func (node *baseNode) HasSlot(slot common.SlotID) bool {
+	node.rwmutex.RLock()
+	defer node.rwmutex.RUnlock()
+
+	_, ok := node.serveSlots[slot]
+
+	return ok
+}
+
 type ComputeNode struct {
 	*baseNode
 }
 
-func NewComputeNode(info *VersionedNodeInfo) (ComputeNode, error) {
+func NewComputeNode(info *VersionedNodeInfo) (*ComputeNode, error) {
 	baseNode, err := NewBaseNode(info)
 	if err != nil {
-		return ComputeNode{}, err
+		return nil, err
 	}
 	node := ComputeNode{
 		baseNode: baseNode,
 	}
-	return node, nil
+	return &node, nil
+}
+
+func (node *ComputeNode) GetNodeType() NodeType {
+	return ComputeNodeType
 }
 
 type StorageNode struct {
 	*baseNode
 }
 
-func NewStorageNode(info *VersionedNodeInfo) (StorageNode, error) {
+func NewStorageNode(info *VersionedNodeInfo) (*StorageNode, error) {
 	baseNode, err := NewBaseNode(info)
 	if err != nil {
-		return StorageNode{}, err
+		return nil, err
 	}
 	node := StorageNode{
 		baseNode: baseNode,
 	}
-	return node, nil
+	return &node, nil
+}
+
+func (node *StorageNode) GetNodeType() NodeType {
+	return StorageNodeType
 }

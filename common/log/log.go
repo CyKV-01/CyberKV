@@ -22,6 +22,15 @@ func init() {
 	zap.ReplaceGlobals(logger)
 }
 
+
+func Debug(msg string, fields ...zapcore.Field) {
+	zap.L().Debug(msg, fields...)
+}
+
+func Debugf(msg string, args ...interface{}) {
+	zap.L().Debug(fmt.Sprintf(msg, args...))
+}
+
 func Info(msg string, fields ...zapcore.Field) {
 	zap.L().Info(msg, fields...)
 }

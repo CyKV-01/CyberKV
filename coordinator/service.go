@@ -2,27 +2,45 @@ package coordinator
 
 import (
 	"context"
-	"time"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
+	"go.uber.org/zap"
 )
 
 func (coord *Coordinator) Get(ctx context.Context, request *proto.ReadRequest) (response *proto.ReadResponse, err error) {
 	slot := common.CalcSlotID(request.Key)
-
 	nodes := coord.computeCluster.GetNodesBySlot(slot)
-	if len(nodes) == 0 {
+	if len(nodes) < coord.computeCluster.readQuorum {
+		log.Warn("no enough compute node to serve",
+			zap.Int("nodes_num", len(nodes)),
+			zap.Int("read_quorum", coord.computeCluster.readQuorum))
 		return &proto.ReadResponse{
 			Status: &proto.Status{
 				ErrCode:    proto.ErrorCode_RetryLater,
-				ErrMessage: "No node to serve",
+				ErrMessage: "no enough compute node to serve",
 			},
 		}, nil
 	}
 
 	node := nodes[0]
+
+	storageNodes := coord.storageCluster.GetNodesBySlot(slot)
+	if len(storageNodes) == 0 {
+		log.Warn("no enough storage node to serve",
+			zap.Int("nodes_num", len(nodes)),
+			zap.Int("read_quorum", coord.computeCluster.readQuorum))
+		return &proto.ReadResponse{
+			Status: &proto.Status{
+				ErrCode:    proto.ErrorCode_RetryLater,
+				ErrMessage: "no enough storage node to serve",
+			},
+		}, nil
+	}
+	for _, node := range storageNodes {
+		request.Info = append(request.Info, &node.info.NodeInfo)
+	}
 
 	resp, err := node.Get(ctx, request)
 	if err != nil {
@@ -36,19 +54,14 @@ func (coord *Coordinator) Get(ctx context.Context, request *proto.ReadRequest) (
 func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) (response *proto.WriteResponse, err error) {
 	slot := common.CalcSlotID(request.Key)
 	nodes := coord.computeCluster.GetNodesBySlot(slot)
-	if nodes == nil {
-		log.Warn("hit a new slot, schedule it...")
-		slots := []common.SlotID{slot}
-		coord.computeCluster.AssignSlots(slots)
-		time.Sleep(50 * time.Millisecond)
-		nodes = coord.computeCluster.GetNodesBySlot(slot)
-	}
-	if len(nodes) == 0 {
-		log.Warn("no node to serve")
+	if len(nodes) < coord.computeCluster.writeQuorum {
+		log.Warn("no enough compute node to serve",
+			zap.Int("nodesNum", len(nodes)),
+			zap.Int("writeQuorum", coord.computeCluster.writeQuorum))
 		return &proto.WriteResponse{
 			Status: &proto.Status{
 				ErrCode:    proto.ErrorCode_RetryLater,
-				ErrMessage: "No node to serve",
+				ErrMessage: "no enough compute node to serve",
 			},
 		}, nil
 	}
@@ -56,25 +69,22 @@ func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) 
 	node := nodes[0]
 
 	storageNodes := coord.storageCluster.GetNodesBySlot(slot)
-	if storageNodes == nil {
-		log.Warn("hit a new slot, schedule it...")
-		slots := []common.SlotID{slot}
-		coord.storageCluster.AssignSlots(slots)
-		time.Sleep(50 * time.Millisecond)
-		storageNodes = coord.storageCluster.GetNodesBySlot(slot)
-	}
 	if len(storageNodes) == 0 {
-		log.Warn("no storage node to serve")
+		log.Warn("no enough storage node to serve",
+			zap.Int("nodesNum", len(nodes)),
+			zap.Int("writeQuorum", coord.computeCluster.writeQuorum))
 		return &proto.WriteResponse{
 			Status: &proto.Status{
 				ErrCode:    proto.ErrorCode_RetryLater,
-				ErrMessage: "No storage node to serve",
+				ErrMessage: "no enough storage node to serve",
 			},
 		}, nil
 	}
 	for _, node := range storageNodes {
 		request.Info = append(request.Info, &node.info.NodeInfo)
 	}
+
+	request.Ts = coord.GenTs()
 
 	resp, err := node.Set(ctx, request)
 	if err != nil {

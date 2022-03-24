@@ -1,6 +1,8 @@
 package coordinator
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"sync"
@@ -8,14 +10,13 @@ import (
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
+	"github.com/yah01/CyberKV/proto"
+	etcdcli "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 
 const (
 	MaxNodeUsagePercent = 0.8
-	DefaultReplicaNum   = 3
-	DefaultWriteQuorum  = 2
-	DefaultReadQuorum   = 2
 )
 
 type SlotInfo[T Node] struct {
@@ -34,31 +35,41 @@ type SlotInfo[T Node] struct {
 // }
 
 type Cluster[T Node] struct {
-	slots            map[common.SlotID]*SlotInfo[T]
-	scheduleTimer    time.Timer
-	scheduleNotifier chan []common.SlotID
-
+	meta        *etcdcli.Client
 	replicaNum  int
 	readQuorum  int
 	writeQuorum int
 
-	nodes   map[common.NodeID]T
 	rwmutex sync.RWMutex
+	slots   []*proto.SlotInfo
+	nodes   map[common.NodeID]T
+
+	scheduleTimer *time.Ticker
 }
 
-func NewCluster[T Node](replicaNum, readQuorum, writeQuorum int) *Cluster[T] {
-	return &Cluster[T]{
-		slots:            make(map[common.SlotID]*SlotInfo[T]),
-		scheduleTimer:    *time.NewTimer(time.Second),
-		scheduleNotifier: make(chan []common.SlotID, 32),
-
+func NewCluster[T Node](meta *etcdcli.Client, replicaNum, readQuorum, writeQuorum int) *Cluster[T] {
+	cluster := &Cluster[T]{
+		meta:        meta,
 		replicaNum:  replicaNum,
 		readQuorum:  readQuorum,
 		writeQuorum: writeQuorum,
 
-		nodes:   make(map[common.NodeID]T),
 		rwmutex: sync.RWMutex{},
+		slots:   make([]*proto.SlotInfo, common.SlotNum),
+		nodes:   make(map[common.NodeID]T),
+
+		scheduleTimer: time.NewTicker(time.Second),
 	}
+
+	for i := 0; i < common.SlotNum; i++ {
+		slot := common.SlotID(i)
+		cluster.slots[slot] = &proto.SlotInfo{
+			Slot:  uint32(slot),
+			Nodes: make(map[string]*proto.NodeInfo, replicaNum),
+		}
+	}
+
+	return cluster
 }
 
 func (cluster *Cluster[T]) AddNode(node T) {
@@ -66,67 +77,158 @@ func (cluster *Cluster[T]) AddNode(node T) {
 	defer cluster.rwmutex.Unlock()
 
 	info := node.GetInfo()
-	old, ok := cluster.nodes[common.NodeID(info.Id)]
+	old, ok := cluster.nodes[info.Id]
 	if !ok || old.GetInfo().Version < info.Version {
-		cluster.nodes[common.NodeID(info.Id)] = node
+		cluster.nodes[info.Id] = node
 	}
 }
 
-func (cluster *Cluster[T]) AssignSlots(slots []common.SlotID) {
-	cluster.scheduleNotifier <- slots
+func (cluster *Cluster[T]) RecoverySlotInfo(slotInfo *proto.SlotInfo) {
+	recoveredNodes := make([]*proto.NodeInfo, 0, len(slotInfo.Nodes))
+	for id, info := range slotInfo.Nodes {
+		node, ok := cluster.GetNode(id)
+		if !ok {
+			continue
+		}
+
+		err := node.AssignSlots([]common.SlotID{int16(slotInfo.Slot)})
+		if err != nil {
+			log.Warn("failed to assign slot to node",
+				zap.Error(err))
+			continue
+		}
+
+		recoveredNodes = append(recoveredNodes, info)
+	}
+
+	slotInfo.Nodes = make(map[string]*proto.NodeInfo, len(recoveredNodes))
+	for _, node := range recoveredNodes {
+		slotInfo.Nodes[node.Id] = node
+	}
+
+	cluster.slots[slotInfo.Slot] = slotInfo
 }
 
-func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) (int, error) {
+func (cluster *Cluster[T]) GetSlotInfo(id common.SlotID) *proto.SlotInfo {
+	cluster.rwmutex.RLock()
+	defer cluster.rwmutex.RUnlock()
+
+	return cluster.slots[id]
+}
+
+func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) error {
 	nodes := cluster.GetNodes()
+	if len(nodes) == 0 {
+		return fmt.Errorf("no node to assign slots")
+	}
+
 	sort.Slice(nodes, func(i, j int) bool {
 		return len(nodes[i].GetSlots()) < len(nodes[j].GetSlots())
 	})
 
-	if len(nodes) == 0 {
-		return 0, fmt.Errorf("no node to assign slots")
+	nodeIdx := 0
+	newSlotInfos := make(map[common.SlotID]*proto.SlotInfo, len(slots))
+	for _, slot := range slots {
+		newInfo, ok := newSlotInfos[slot]
+		// Clone the old SlotInfo
+		if !ok {
+			old := cluster.GetSlotInfo(slot)
+			newInfo = &proto.SlotInfo{
+				Slot:  uint32(slot),
+				Nodes: make(map[string]*proto.NodeInfo, len(old.Nodes)),
+			}
+			for id, info := range old.Nodes {
+				newInfo.Nodes[id] = info
+			}
+			newSlotInfos[slot] = newInfo
+		}
+
+		for len(newInfo.Nodes) < cluster.replicaNum {
+			node := nodes[nodeIdx]
+			nodeIdx++
+			if nodeIdx >= len(nodes) {
+				nodeIdx %= len(nodes)
+			}
+			newInfo.Nodes[node.GetInfo().Id] = &node.GetInfo().NodeInfo
+		}
 	}
 
-	nodeIdx := 0
-	j := 0
-	assignedSlotCount := 0
-	for i := 0; i < len(slots) && i < len(nodes); i = j {
-		node := nodes[nodeIdx]
-		j = i + 1
-		if j > len(slots) {
-			j = len(slots)
-		}
+	nodeType := nodes[0].GetNodeType()
+	wg := sync.WaitGroup{}
+	for _, info := range newSlotInfos {
+		wg.Add(1)
+		go func(info *proto.SlotInfo) {
+			defer wg.Done()
 
-		log.Infof("schedule slots=%+v to node=%+v", slots, node)
-		scheduleSlots := slots[i:j]
-		err := node.AssignSlots(scheduleSlots)
-		if err != nil {
-			return i, err
-		}
-		for _, slot := range scheduleSlots {
-			slotInfo, ok := cluster.slots[slot]
-			if !ok {
-				slotInfo = &SlotInfo[T]{
-					Id:    slot,
-					Nodes: make([]T, 0, 1),
-				}
-				cluster.slots[slot] = slotInfo
+			err := cluster.saveSlotInfo(info, nodeType)
+			if err != nil {
+				return
 			}
 
-			slotInfo.Nodes = append(slotInfo.Nodes, node)
-		}
+			succeedNodes := make([]*proto.NodeInfo, 0, len(info.Nodes))
+			for id, nodeInfo := range info.Nodes {
+				node, ok := cluster.GetNode(id)
+				if !ok {
+					continue
+				}
 
-		assignedSlotCount += j - i
+				if !node.HasSlot(int16(info.Slot)) {
+					err = node.AssignSlots([]common.SlotID{int16(info.Slot)})
+					if err != nil {
+						continue
+					}
+				}
+
+				succeedNodes = append(succeedNodes, nodeInfo)
+			}
+
+			if len(succeedNodes) != len(info.Nodes) {
+				info.Nodes = make(map[string]*proto.NodeInfo, len(succeedNodes))
+				for _, nodeInfo := range succeedNodes {
+					info.Nodes[nodeInfo.Id] = nodeInfo
+				}
+
+				err = cluster.saveSlotInfo(info, nodeType)
+				if err != nil {
+					return
+				}
+			}
+
+		}(info)
 	}
 
-	return assignedSlotCount, nil
+	wg.Wait()
+
+	for id, info := range newSlotInfos {
+		cluster.slots[id] = info
+	}
+
+	return nil
+}
+
+func (cluster *Cluster[T]) saveSlotInfo(slot *proto.SlotInfo, nodeType NodeType) error {
+	nodeTypeStr := "compute"
+	if nodeType == StorageNodeType {
+		nodeTypeStr = "storage"
+	}
+
+	key := fmt.Sprintf("slots/%v/%v", slot.Slot, nodeTypeStr)
+	value, err := json.Marshal(slot)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	ctx, _ = context.WithTimeout(ctx, time.Second)
+	_, err = cluster.meta.Put(ctx, key, string(value))
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (cluster *Cluster[T]) GetNodes() []T {
-	// excludedNodesMap := make(map[common.NodeID]bool, len(excludedNodes))
-	// for _, node := range excludedNodes {
-	// 	excludedNodesMap[node] = true
-	// }
-
 	cluster.rwmutex.RLock()
 	defer cluster.rwmutex.RUnlock()
 
@@ -138,6 +240,15 @@ func (cluster *Cluster[T]) GetNodes() []T {
 	return nodes
 }
 
+func (cluster *Cluster[T]) GetNode(id common.NodeID) (T, bool) {
+	cluster.rwmutex.RLock()
+	defer cluster.rwmutex.RUnlock()
+
+	node, ok := cluster.nodes[id]
+
+	return node, ok
+}
+
 // func (cluster *baseCluster) GetNode(id common.NodeID) Node {
 // 	cluster.rwmutex.RLock()
 // 	defer cluster.rwmutex.RUnlock()
@@ -146,36 +257,27 @@ func (cluster *Cluster[T]) GetNodes() []T {
 // }
 
 func (cluster *Cluster[T]) GetNodesBySlot(slot common.SlotID) []T {
-	slotInfo, ok := cluster.slots[slot]
-	if !ok {
-		return nil
-	}
+	slotInfo := cluster.slots[slot]
 
 	log.Infof("slot=%+v", slotInfo)
+	nodes := make([]T, 0, len(slotInfo.Nodes))
+	for _, nodeInfo := range slotInfo.Nodes {
+		nodes = append(nodes, cluster.nodes[nodeInfo.Id])
+	}
 
-	return slotInfo.Nodes
+	return nodes
 }
 
 func (cluster *Cluster[T]) AssignSlotsBackground() {
 	var slots []common.SlotID
-	for {
-		select {
-		case <-cluster.scheduleTimer.C:
-			slots = cluster.getUnassignedSlots()
-			cluster.scheduleTimer.Reset(time.Second)
-
-		case slots = <-cluster.scheduleNotifier:
-		}
-
+	for ; true; <-cluster.scheduleTimer.C {
+		slots = cluster.getUnassignedSlots()
 		if len(slots) == 0 {
 			continue
 		}
 
 		log.Infof("schedule slots=%+v", slots)
-		n, err := cluster.assignSlots(slots)
-		if n > 0 {
-			log.Info("scheduled slots", zap.Int("succeed", n))
-		}
+		err := cluster.assignSlots(slots)
 		if err != nil {
 			log.Error("failed to schedule some slots", zap.Error(err))
 		}
@@ -188,7 +290,7 @@ func (cluster *Cluster[T]) getUnassignedSlots() []common.SlotID {
 
 	for slot, info := range cluster.slots {
 		if len(info.Nodes) < cluster.replicaNum {
-			unassignedSlots = append(unassignedSlots, slot)
+			unassignedSlots = append(unassignedSlots, common.SlotID(slot))
 		}
 	}
 

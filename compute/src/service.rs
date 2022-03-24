@@ -33,31 +33,12 @@ impl KeyValue for KvServer {
         let request = request.into_inner();
 
         let response = match self.mem_table.get(&request.key).await {
-            Ok(value) => {
-                if let Some(value) = value {
-                    ReadResponse {
-                        value: value.value,
-                        ts: value.timestamp,
-                        status: None,
-                    }
-                } else {
-                    // TODO: Cache miss in MemTable, read it from storage layer
-                    ReadResponse {
-                        value: String::new(),
-                        ts: 0,
-                        status: Some(status::Status {
-                            err_code: ErrorCode::KeyNotFound.into(),
-                            err_message: "key not found".to_string(),
-                        }),
-                    }
-                }
-            }
-
-            Err(err) => ReadResponse {
-                value: String::new(),
-                ts: 0,
-                status: Some(err),
+            Some(value) => ReadResponse {
+                value: value.value,
+                ts: value.timestamp,
+                status: None,
             },
+            None => self.storage_layer.get(request).await?.into_inner(),
         };
 
         Ok(Response::new(response))
@@ -65,20 +46,22 @@ impl KeyValue for KvServer {
 
     async fn set(&self, request: Request<WriteRequest>) -> Result<Response<WriteResponse>, Status> {
         let request = request.into_inner();
+        let key = request.key.clone();
         let value = Value::new(request.ts, request.value.clone());
 
+        // write WAL
+        let response = self.storage_layer.set(request).await?.into_inner();
+        if let Some(status) = &response.status {
+            if status.err_code != ErrorCode::Ok as i32 {
+                return Ok(Response::new(response));
+            }
+        }
+
         // write memtable
-        let status = match self.mem_table.set(request.key.clone(), value).await {
+        let status = match self.mem_table.set(key, value).await {
             Ok(_) => build_status(ErrorCode::Ok, ""),
             Err(err) => err,
         };
-
-        // let mut is_sync = false;
-        // if let Some(option) = &request.option {
-        //     is_sync = option.sync;
-        // }
-
-        self.storage_layer.set(request).await?;
 
         Ok(Response::new(WriteResponse {
             status: Some(status),

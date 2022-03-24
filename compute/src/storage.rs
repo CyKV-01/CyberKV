@@ -30,7 +30,7 @@ impl StorageNode {
     }
 
     pub async fn get(&mut self, request: ReadRequest) -> Result<Response<ReadResponse>, Status> {
-        todo!()
+        Ok(self.client.get(request).await?)
     }
 
     pub async fn set(&mut self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
@@ -119,7 +119,63 @@ impl StorageLayer {
         //     ts: value.timestamp,
         //     status: None,
         // }));
-        todo!()
+
+        let mut nodes = Vec::with_capacity(request.info.len());
+        for info in &request.info {
+            match StorageNode::new(info.clone()).await {
+                Ok(node) => nodes.push(node),
+                Err(err) => {
+                    return Err(Status::failed_precondition(format!(
+                        "failed to connect storage node, err={}",
+                        err
+                    )))
+                }
+            }
+        }
+
+        if nodes.len() < self.read_quorum {
+            return Err(Status::failed_precondition("no enough storage node"));
+        }
+
+        let mut read_results = Vec::with_capacity(nodes.len());
+        for node in nodes.iter_mut() {
+            read_results.push(node.get(request.clone()));
+        }
+
+        // TODO: wait until reaching read quorum
+        let results = join_all(read_results).await;
+
+        let mut read_counts = 0;
+        let mut value = String::new();
+        let mut ts = 0;
+        for result in results {
+            if result.is_ok() {
+                let read_response = result.unwrap().into_inner();
+                if read_response.ts > ts {
+                    ts = read_response.ts;
+                    value = read_response.value;
+                }
+
+                read_counts += 1;
+                if read_counts >= self.read_quorum {
+                    break;
+                }
+            } else {
+                continue;
+            }
+        }
+
+        if read_counts < self.read_quorum {
+            return Err(Status::failed_precondition(
+                "no enough storage node to reach read quorum",
+            ));
+        }
+
+        return Ok(Response::new(ReadResponse {
+            ts: ts,
+            value: value,
+            status: Some(build_status(ErrorCode::Ok, "")),
+        }));
     }
 
     pub async fn set(&self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
