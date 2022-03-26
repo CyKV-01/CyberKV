@@ -7,7 +7,9 @@ pub struct ReadOption {
 pub struct ReadRequest {
     #[prost(string, tag = "1")]
     pub key: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
+    #[prost(uint64, tag = "2")]
+    pub ts: u64,
+    #[prost(message, optional, tag = "3")]
     pub option: ::core::option::Option<ReadOption>,
     #[prost(message, repeated, tag = "5")]
     pub info: ::prost::alloc::vec::Vec<super::node::NodeInfo>,

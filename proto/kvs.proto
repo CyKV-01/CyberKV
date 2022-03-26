@@ -18,7 +18,8 @@ message ReadOption {
 
 message ReadRequest {
     string key = 1;
-    ReadOption option = 2;
+    uint64 ts = 2;
+    ReadOption option = 3;
     
     repeated node.NodeInfo info = 5;
 }

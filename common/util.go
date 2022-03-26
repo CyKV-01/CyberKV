@@ -53,3 +53,31 @@ func SliceContains[T comparable](slice []T, target T) bool {
 
 	return false
 }
+
+// Search for the first element which is not less than target
+func Search[S ~[]T, T Comparable[T]](slice S, target T) int {
+	if len(slice) == 0 {
+		return 0
+	}
+
+	var (
+		l   = 0
+		r   = len(slice) - 1
+		mid int
+	)
+
+	for l < r {
+		mid = (l + r) >> 1
+		if slice[mid].Compare(target) < 0 {
+			l = mid + 1
+		} else {
+			r = mid
+		}
+	}
+
+	if slice[r].Compare(target) < 0 {
+		return len(slice)
+	}
+
+	return r
+}

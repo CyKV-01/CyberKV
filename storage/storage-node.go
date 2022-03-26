@@ -6,6 +6,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/db"
 	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
 	etcdcli "go.etcd.io/etcd/client/v3"
@@ -19,6 +20,9 @@ type StorageNode struct {
 	*common.BaseNode
 	proto.UnimplementedKeyValueServer
 
+	ts       common.TimeStamp
+	mem      *db.SlotMemTable[db.InternalKey, string]
+	imm      *db.SlotMemTable[db.InternalKey, string]
 	walMutex sync.Mutex
 	wals     map[common.SlotID]*LogWriter
 	store    *minio.Client
@@ -27,6 +31,9 @@ type StorageNode struct {
 func NewStorageNode(addr string, etcd *etcdcli.Client, minio *minio.Client) *StorageNode {
 	return &StorageNode{
 		BaseNode: common.NewBaseNode(addr, etcd),
+
+		mem:      db.NewSlotMemTable[db.InternalKey, string](),
+		imm:      db.NewSlotMemTable[db.InternalKey, string](),
 		walMutex: sync.Mutex{},
 		wals:     make(map[common.SlotID]*LogWriter),
 		store:    minio,
