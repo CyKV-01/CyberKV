@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package kvs;
+option go_package = "github.com/CyKV-01/CyberKV/proto";
+
+service Storage {
+    // Coordinator to storage nodes
+    rpc Compact(CompactRequest) returns (CompactResponse) {}
+
+    // Storage nodes to leader storage node
+    rpc PushMemTable(PushMemTableRequest) returns (PushMemTableResponse) {}
+}
+
+message KvData {
+    string key = 1;
+    string value = 2;
+    uint64 timestamp = 3;
+}
+
+message CompactRequest {
+    string leader = 1;
+    string leader_addr = 2;
+    int64 slot = 3;
+    uint64 timestamp = 4;
+}
+
+message CompactResponse {
+}
+
+message PushMemTableRequest {
+    int64 slot = 1;
+    repeated KvData data = 2;
+}
+
+message PushMemTableResponse {
+}

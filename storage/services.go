@@ -20,12 +20,17 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 
 	slot := common.CalcSlotID(request.Key)
 
+	mem, imm, fmem := node.getMemTables()
+
 	internalKey := db.NewInternalKey(request.Key, request.Ts)
-	key, value := node.mem.Find(slot, internalKey)
-	if value == nil {
-		key, value = node.imm.Find(slot, internalKey)
-		if value == nil {
-			// todo(read SSTables)
+	key, value := mem.Find(slot, internalKey)
+	if value == nil && imm != nil {
+		key, value = imm.Find(slot, internalKey)
+		if value == nil && fmem != nil {
+			key, value = fmem.Find(slot, internalKey)
+			if value == nil {
+				//todo: read sstable
+			}
 		}
 	}
 
@@ -72,8 +77,9 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 			}}, nil
 	}
 
+	mem, _, _ := node.getMemTables()
 	internalKey := db.NewInternalKey(request.Key, request.Ts)
-	node.mem.Set(slot, internalKey, request.Value)
+	mem.Set(slot, internalKey, request.Value)
 
 	return &proto.WriteResponse{}, nil
 }

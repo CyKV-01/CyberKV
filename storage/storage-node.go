@@ -20,9 +20,11 @@ type StorageNode struct {
 	*common.BaseNode
 	proto.UnimplementedKeyValueServer
 
-	ts       common.TimeStamp
-	mem      *db.SlotMemTable[db.InternalKey, string]
-	imm      *db.SlotMemTable[db.InternalKey, string]
+	memTableSwitchRWMutex sync.RWMutex
+	mem                   *db.SlotMemTable[db.InternalKey, string]
+	imm                   *db.SlotMemTable[db.InternalKey, string]
+	fmem                  *db.SlotMemTable[db.InternalKey, string]
+
 	walMutex sync.Mutex
 	wals     map[common.SlotID]*LogWriter
 	store    *minio.Client
@@ -32,8 +34,11 @@ func NewStorageNode(addr string, etcd *etcdcli.Client, minio *minio.Client) *Sto
 	return &StorageNode{
 		BaseNode: common.NewBaseNode(addr, etcd),
 
-		mem:      db.NewSlotMemTable[db.InternalKey, string](),
-		imm:      db.NewSlotMemTable[db.InternalKey, string](),
+		memTableSwitchRWMutex: sync.RWMutex{},
+		mem:                   db.NewSlotMemTable[db.InternalKey, string](),
+		imm:                   nil,
+		fmem:                  nil,
+
 		walMutex: sync.Mutex{},
 		wals:     make(map[common.SlotID]*LogWriter),
 		store:    minio,
@@ -56,4 +61,24 @@ func (node *StorageNode) Start() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (node *StorageNode) CompactMemTable() {
+
+}
+
+func (node *StorageNode) getMemTables() (*db.SlotMemTable[db.InternalKey, string], *db.SlotMemTable[db.InternalKey, string], *db.SlotMemTable[db.InternalKey, string]) {
+	node.memTableSwitchRWMutex.RLock()
+	defer node.memTableSwitchRWMutex.RUnlock()
+
+	return node.mem, node.imm, node.fmem
+}
+
+func (node *StorageNode) rotateMemTables() {
+	node.memTableSwitchRWMutex.Lock()
+	defer node.memTableSwitchRWMutex.Unlock()
+
+	node.fmem = node.imm
+	node.imm = node.mem
+	node.mem = db.NewSlotMemTable[db.InternalKey, string]()
 }
