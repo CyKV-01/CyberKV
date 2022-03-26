@@ -2,14 +2,19 @@ module github.com/yah01/CyberKV
 
 go 1.18
 
-require go.etcd.io/etcd/client/v3 v3.5.2
+require (
+	github.com/stretchr/testify v1.7.1
+	go.etcd.io/etcd/client/v3 v3.5.2
+)
 
 require (
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20220221023154-0b2280d3ff96 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/smartystreets/assertions v1.2.1 // indirect
-	github.com/stretchr/testify v1.7.1 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
 require (

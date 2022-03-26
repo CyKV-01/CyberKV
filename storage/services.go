@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/db"
@@ -15,72 +14,54 @@ import (
 )
 
 func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
+	log.Info("get request",
+		zap.String("key", request.Key),
+		zap.Uint64("timestamp", request.Ts))
+
 	slot := common.CalcSlotID(request.Key)
 
-	log.Info("opening logs...")
-	reader, err := NewLogReader(slot)
-	if err != nil {
-		log.Error("failed to open log reader",
-			zap.Int16("slot", slot),
-			zap.String("key", request.Key))
+	tables := node.mem.GetMemTables(slot)
+	if tables == nil {
 		return &proto.ReadResponse{
 			Status: &proto.Status{
-				ErrCode:    proto.ErrorCode_IoError,
-				ErrMessage: fmt.Sprintf("failed to read WAL, err=%v", err),
-			}}, nil
+				ErrCode: proto.ErrorCode_KeyNotFound,
+			},
+		}, nil
 	}
 
-	log.Info("reading records...")
-	ts := common.TimeStamp(0)
-	value := ""
-	for {
-		record, err := reader.NextRecord()
-		if err != nil && err != io.EOF {
-			return &proto.ReadResponse{
-				Status: &proto.Status{
-					ErrCode:    proto.ErrorCode_IoError,
-					ErrMessage: fmt.Sprintf("failed to decode record, err=%v", err),
-				}}, nil
-		}
-		if record == nil {
-			break
-		}
-
-		log.Info("reading batch")
-		batch := db.NewBatchFromBytes(record.Data)
-
-		keys, values, err := batch.GetKvs()
-		if err != nil {
-			return &proto.ReadResponse{
-				Status: &proto.Status{
-					ErrCode:    proto.ErrorCode_IoError,
-					ErrMessage: fmt.Sprintf("failed to decode batch, err=%v", err),
-				}}, nil
-		}
-
-		recordTs := batch.GetSequence()
-		log.Info("batch info",
-			zap.Uint64("batch_ts", recordTs))
-
-		for i := range keys {
-			if keys[i] == request.Key && recordTs > ts {
-				ts = recordTs
-				value = values[i]
+	mem, imm, fmem := tables[0], tables[1], tables[2]
+	internalKey := db.NewInternalKey(request.Key, request.Ts)
+	key, value := mem.Find(internalKey)
+	if value == nil && imm != nil {
+		key, value = imm.Find(internalKey)
+		if value == nil && fmem != nil {
+			key, value = fmem.Find(internalKey)
+			if value == nil {
+				//todo: read sstable
 			}
 		}
+	}
 
-		log.Info("updated from log",
-			zap.Uint64("ts", ts),
-			zap.String("value", value))
+	if value == nil {
+		return &proto.ReadResponse{
+			Status: &proto.Status{
+				ErrCode: proto.ErrorCode_KeyNotFound,
+			},
+		}, nil
 	}
 
 	return &proto.ReadResponse{
-		Ts:    ts,
-		Value: value,
+		Value: *value,
+		Ts:    key.GetTimeStamp(),
 	}, nil
 }
 
 func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
+	log.Info("set request",
+		zap.String("key", request.Key),
+		zap.Uint64("timestamp", request.Ts),
+		zap.String("value", request.Value))
+
 	slot := common.CalcSlotID(request.Key)
 
 	node.walMutex.Lock()
@@ -103,6 +84,15 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 				ErrMessage: fmt.Sprintf("failed to write WAL, err=%v", err),
 			}}, nil
 	}
+
+	internalKey := db.NewInternalKey(request.Key, request.Ts)
+	node.mem.Lock(slot)
+	mem := node.mem.GetMemTable(slot)
+	if mem == nil {
+		mem = node.mem.CreateTables(slot)
+	}
+	mem.Set(internalKey, request.Value)
+	node.mem.Unlock(slot)
 
 	return &proto.WriteResponse{}, nil
 }

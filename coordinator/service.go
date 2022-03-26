@@ -10,6 +10,10 @@ import (
 )
 
 func (coord *Coordinator) Get(ctx context.Context, request *proto.ReadRequest) (response *proto.ReadResponse, err error) {
+	if request.Ts <= 0 {
+		request.Ts = coord.CurrentTs()
+	}
+
 	slot := common.CalcSlotID(request.Key)
 	nodes := coord.computeCluster.GetNodesBySlot(slot)
 	if len(nodes) < coord.computeCluster.readQuorum {

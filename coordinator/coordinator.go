@@ -194,3 +194,7 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 func (coord *Coordinator) GenTs() common.TimeStamp {
 	return atomic.AddUint64(&coord.ts, 1)
 }
+
+func (coord *Coordinator) CurrentTs() common.TimeStamp {
+	return atomic.LoadUint64(&coord.ts)
+}
