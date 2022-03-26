@@ -42,51 +42,77 @@ func (mem *MemTable[K, V]) Set(key K, value V) {
 type SlotMemTable[K Comparable[K], V any] struct {
 	rwmutex   sync.RWMutex
 	totalSize uint64
-	table     map[SlotID]*MemTable[K, V]
+	mem       map[SlotID][]*MemTable[K, V] // slot_id -> mem, imm, fmem
 }
 
 func NewSlotMemTable[K Comparable[K], V any]() *SlotMemTable[K, V] {
 	return &SlotMemTable[K, V]{
 		rwmutex:   sync.RWMutex{},
 		totalSize: 0,
-		table:     make(map[int16]*MemTable[K, V]),
+		mem:       make(map[int16][]*MemTable[K, V]),
 	}
 }
 
-func (table *SlotMemTable[K, V]) Get(slot SlotID, key K) *V {
+func (table *SlotMemTable[K, V]) GetMemTables(slot SlotID) []*MemTable[K, V] {
 	table.rwmutex.RLock()
 	defer table.rwmutex.RUnlock()
 
-	mem, ok := table.table[slot]
+	tables, ok := table.mem[slot]
 	if !ok {
 		return nil
 	}
 
-	return mem.Get(key)
+	return tables
 }
 
-func (table *SlotMemTable[K, V]) Find(slot SlotID, key K) (K, *V) {
-	table.rwmutex.RLock()
-	defer table.rwmutex.RUnlock()
-
-	mem, ok := table.table[slot]
+func (table *SlotMemTable[K, V]) GetMemTable(slot SlotID) *MemTable[K, V] {
+	tables, ok := table.mem[slot]
 	if !ok {
-		var resultKey K
-		return resultKey, nil
+		return nil
 	}
 
-	return mem.Find(key)
+	return tables[0]
 }
 
-func (table *SlotMemTable[K, V]) Set(slot SlotID, key K, value V) {
+func (table *SlotMemTable[K, V]) CreateTables(slot SlotID) *MemTable[K, V] {
+	tables := make([]*MemTable[K, V], 3)
+	tables[0] = NewMemTable[K, V]()
+
+	table.mem[slot] = tables
+
+	return tables[0]
+}
+
+func (table *SlotMemTable[K, V]) Lock(slot SlotID) {
 	table.rwmutex.Lock()
-	defer table.rwmutex.Unlock()
-
-	mem, ok := table.table[slot]
-	if !ok {
-		mem = NewMemTable[K, V]()
-		table.table[slot] = mem
-	}
-
-	mem.Set(key, value)
 }
+
+func (table *SlotMemTable[K, V]) Unlock(slot SlotID) {
+	table.rwmutex.Unlock()
+}
+
+// func (table *SlotMemTable[K, V]) Find(slot SlotID, key K) (K, *V) {
+// 	table.rwmutex.RLock()
+// 	defer table.rwmutex.RUnlock()
+
+// 	mem, ok := table.mem[slot]
+// 	if !ok {
+// 		var resultKey K
+// 		return resultKey, nil
+// 	}
+
+// 	return mem.Find(key)
+// }
+
+// func (table *SlotMemTable[K, V]) Set(slot SlotID, key K, value V) {
+// 	table.rwmutex.Lock()
+// 	defer table.rwmutex.Unlock()
+
+// 	mem, ok := table.mem[slot]
+// 	if !ok {
+// 		mem = NewMemTable[K, V]()
+// 		table.mem[slot] = mem
+// 	}
+
+// 	mem.Set(key, value)
+// }

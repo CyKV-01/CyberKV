@@ -20,14 +20,22 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 
 	slot := common.CalcSlotID(request.Key)
 
-	mem, imm, fmem := node.getMemTables()
+	tables := node.mem.GetMemTables(slot)
+	if tables == nil {
+		return &proto.ReadResponse{
+			Status: &proto.Status{
+				ErrCode: proto.ErrorCode_KeyNotFound,
+			},
+		}, nil
+	}
 
+	mem, imm, fmem := tables[0], tables[1], tables[2]
 	internalKey := db.NewInternalKey(request.Key, request.Ts)
-	key, value := mem.Find(slot, internalKey)
+	key, value := mem.Find(internalKey)
 	if value == nil && imm != nil {
-		key, value = imm.Find(slot, internalKey)
+		key, value = imm.Find(internalKey)
 		if value == nil && fmem != nil {
-			key, value = fmem.Find(slot, internalKey)
+			key, value = fmem.Find(internalKey)
 			if value == nil {
 				//todo: read sstable
 			}
@@ -77,9 +85,14 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 			}}, nil
 	}
 
-	mem, _, _ := node.getMemTables()
 	internalKey := db.NewInternalKey(request.Key, request.Ts)
-	mem.Set(slot, internalKey, request.Value)
+	node.mem.Lock(slot)
+	mem := node.mem.GetMemTable(slot)
+	if mem == nil {
+		mem = node.mem.CreateTables(slot)
+	}
+	mem.Set(internalKey, request.Value)
+	node.mem.Unlock(slot)
 
 	return &proto.WriteResponse{}, nil
 }
