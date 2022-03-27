@@ -2,7 +2,7 @@ all: build-coordinator build-compute build-storage
 
 build-coordinator:
 	@echo "building coordinator..."
-	@cd cmd/coordinator && go build -o coordinator
+	@cd cmd/coordinator && go build -o coordinator -race
 
 build-compute:
 	@echo "building compute-node..."
@@ -10,7 +10,7 @@ build-compute:
 
 build-storage:
 	@echo "building storage-node..."
-	@cd cmd/storage-node && go build -o storage-node
+	@cd cmd/storage-node && go build -o storage-node -race
 
 clean: clean-data
 	@rm cmd/coordinator/coordinator cmd/storage-node/storage-node -v

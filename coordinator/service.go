@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
@@ -95,6 +96,14 @@ func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) 
 		log.Errorf("failed to set for key=%s value=%s, err=%v",
 			request.Key, request.Value, err)
 		return nil, err
+	}
+
+	if common.IsOk(resp.Status) {
+		old := coord.AddSlotMemSize(slot, uint64(len(request.Key)+len(request.Value)))
+		if old >= common.WalCompactThreshold && 
+			atomic.CompareAndSwapUint64(&coord.slotMemSizeTable[slot], old, 0) {
+			coord.CompactMemTable(slot)
+		}
 	}
 
 	return resp, nil

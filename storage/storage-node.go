@@ -19,12 +19,13 @@ const SSTableRootDir = "data"
 type StorageNode struct {
 	*common.BaseNode
 	proto.UnimplementedKeyValueServer
+	proto.UnimplementedStorageServer
 
 	globalRwMutex     sync.RWMutex
 	memTableRwMutexes map[common.SlotID]sync.RWMutex
 	mem               *db.SlotMemTable[db.InternalKey, string]
-	// imm               *db.SlotMemTable[db.InternalKey, string]
-	// fmem              *db.SlotMemTable[db.InternalKey, string]
+
+	compactor *Compactor
 
 	walMutex sync.Mutex
 	wals     map[common.SlotID]*LogWriter
@@ -36,7 +37,7 @@ func NewStorageNode(addr string, etcd *etcdcli.Client, minio *minio.Client) *Sto
 		BaseNode: common.NewBaseNode(addr, etcd),
 
 		globalRwMutex:     sync.RWMutex{},
-		memTableRwMutexes: make(map[int16]sync.RWMutex),
+		memTableRwMutexes: make(map[common.SlotID]sync.RWMutex),
 		mem:               db.NewSlotMemTable[db.InternalKey, string](),
 		// imm:               nil,
 		// fmem:              nil,
@@ -65,6 +66,5 @@ func (node *StorageNode) Start() {
 	}
 }
 
-func (node *StorageNode) CompactMemTable() {
-	// node.rotateMemTables()
+func (node *StorageNode) WriteSSTable(dataCh chan *proto.KvData) {
 }

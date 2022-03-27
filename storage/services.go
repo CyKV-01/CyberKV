@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// KeyValue service
+
 func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
 	log.Info("get request",
 		zap.String("key", request.Key),
@@ -31,18 +33,18 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 
 	mem, imm, fmem := tables[0], tables[1], tables[2]
 	internalKey := db.NewInternalKey(request.Key, request.Ts)
-	key, value := mem.Find(internalKey)
-	if value == nil && imm != nil {
-		key, value = imm.Find(internalKey)
-		if value == nil && fmem != nil {
-			key, value = fmem.Find(internalKey)
-			if value == nil {
+	key, value, ok := mem.Find(internalKey)
+	if !ok && imm != nil {
+		key, value, ok = imm.Find(internalKey)
+		if !ok && fmem != nil {
+			key, value, ok = fmem.Find(internalKey)
+			if !ok {
 				//todo: read sstable
 			}
 		}
 	}
 
-	if value == nil {
+	if !ok {
 		return &proto.ReadResponse{
 			Status: &proto.Status{
 				ErrCode: proto.ErrorCode_KeyNotFound,
@@ -51,7 +53,7 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 	}
 
 	return &proto.ReadResponse{
-		Value: *value,
+		Value: value,
 		Ts:    key.GetTimeStamp(),
 	}, nil
 }
@@ -99,4 +101,42 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 
 func (node *StorageNode) Remove(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Remove not implemented")
+}
+
+// Storage service
+// Coordinator to storage nodes
+func (node *StorageNode) Compact(ctx context.Context, request *proto.CompactRequest) (*proto.CompactResponse, error) {
+	slot := common.SlotID(request.Slot)
+	group := node.mem.Rotate(slot)
+	imm := group.Imm()
+
+	if request.Leader == node.Info.Id {
+		slotCh := node.compactor.PreCompact(slot)
+		ch := slotCh.AcquireChan()
+
+		go func() {
+			imm.Range(func(key db.InternalKey, value string) bool {
+				ch <- &proto.KvData{
+					Key:       key.UserKey(),
+					Value:     value,
+					Timestamp: key.GetTimeStamp(),
+				}
+
+				return true
+			})
+
+			close(ch)
+		}()
+
+		mergeCh := node.compactor.MergeChan(slotCh)
+
+		node.WriteSSTable(mergeCh)
+	}
+
+	return &proto.CompactResponse{}, nil
+}
+
+// Storage nodes to leader storage node
+func (node *StorageNode) PushMemTable(ctx context.Context, request *proto.PushMemTableRequest) (*proto.PushMemTableResponse, error) {
+	return nil, nil
 }
