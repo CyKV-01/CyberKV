@@ -1,6 +1,8 @@
 package db
 
 import (
+	"sync"
+
 	. "github.com/yah01/CyberKV/common"
 )
 
@@ -12,38 +14,73 @@ const (
 type NodeType int
 
 type BTreeNode[K Comparable[K], V any] interface {
-	Split(parent *InternalNode[K, V]) (BTreeNode[K, V], K)
-	InnerKeys() []K
+	Parent() *InternalNode[K, V]
+	SetParent(*InternalNode[K, V])
+	Split() (BTreeNode[K, V], K)
 	Len() int
 	Cap() int
 	NodeType() NodeType
+	Lock()
+	Unlock()
+	RLock()
+	RUnlock()
 }
 
-type baseBTreeNode[K Comparable[K]] struct {
-	keys []K
+type baseBTreeNode[K Comparable[K], V any] struct {
+	rwmutex sync.RWMutex
+	parent  *InternalNode[K, V]
+	keys    []K
 }
 
-func (node *baseBTreeNode[K]) InnerKeys() []K {
-	return node.keys
+func newBaseBTreeNode[K Comparable[K], V any](fanout int) *baseBTreeNode[K, V] {
+	return &baseBTreeNode[K, V]{
+		rwmutex: sync.RWMutex{},
+		parent:  nil,
+		keys:    make([]K, 0, fanout-1),
+	}
 }
 
-func (node *baseBTreeNode[K]) Len() int {
+func (node *baseBTreeNode[K, V]) Parent() *InternalNode[K, V] {
+	return node.parent
+}
+
+func (node *baseBTreeNode[K, V]) SetParent(parent *InternalNode[K, V]) {
+	node.parent = parent
+}
+
+func (node *baseBTreeNode[K, V]) Len() int {
 	return len(node.keys)
 }
 
-func (node *baseBTreeNode[K]) Cap() int {
+func (node *baseBTreeNode[K, V]) Cap() int {
 	return cap(node.keys)
 }
 
+func (node *baseBTreeNode[K, V]) Lock() {
+	node.rwmutex.Lock()
+}
+
+func (node *baseBTreeNode[K, V]) Unlock() {
+	node.rwmutex.Unlock()
+}
+
+func (node *baseBTreeNode[K, V]) RLock() {
+	node.rwmutex.RLock()
+}
+
+func (node *baseBTreeNode[K, V]) RUnlock() {
+	node.rwmutex.RUnlock()
+}
+
 type LeafNode[K Comparable[K], V any] struct {
-	*baseBTreeNode[K]
+	*baseBTreeNode[K, V]
 	values []V
 	right  *LeafNode[K, V]
 }
 
 func NewLeafNode[K Comparable[K], V any](fanout int) *LeafNode[K, V] {
 	return &LeafNode[K, V]{
-		baseBTreeNode: &baseBTreeNode[K]{make([]K, 0, fanout-1)},
+		baseBTreeNode: newBaseBTreeNode[K, V](fanout),
 		values:        make([]V, 0, fanout-1),
 		right:         nil,
 	}
@@ -72,29 +109,31 @@ func (node *LeafNode[K, V]) Insert(key K, value V) {
 	node.values[i] = value
 }
 
-func (node *LeafNode[K, V]) Get(key K) *V {
+func (node *LeafNode[K, V]) Get(key K) (value V) {
 	if node.Len() == 0 {
-		return nil
+		return
 	}
 
 	i := Search(node.keys, key)
 	if node.keys[i].Compare(key) != 0 {
-		return nil
+		return
 	}
 
-	return &node.values[i]
+	return node.values[i]
 }
 
 func (node *LeafNode[K, V]) NodeType() NodeType {
 	return LeafNodeType
 }
 
-func (node *LeafNode[K, V]) Split(parent *InternalNode[K, V]) (BTreeNode[K, V], K) {
+func (node *LeafNode[K, V]) Split() (BTreeNode[K, V], K) {
 	mid := node.Len()/2 + 1
+	parent := node.parent
 
 	newLeaf := NewLeafNode[K, V](node.Cap() + 1)
 	newLeaf.keys = append(newLeaf.keys, node.keys[mid:]...)
 	newLeaf.values = append(newLeaf.values, node.values[mid:]...)
+	newLeaf.SetParent(parent)
 
 	node.keys = node.keys[:mid]
 	node.values = node.values[:mid]
@@ -106,30 +145,55 @@ func (node *LeafNode[K, V]) Split(parent *InternalNode[K, V]) (BTreeNode[K, V], 
 }
 
 type InternalNode[K Comparable[K], V any] struct {
-	*baseBTreeNode[K]
+	*baseBTreeNode[K, V]
 	children []BTreeNode[K, V]
 }
 
 func NewInternalNode[K Comparable[K], V any](fanout int, initChlid ...BTreeNode[K, V]) *InternalNode[K, V] {
-	children := make([]BTreeNode[K, V], 1, fanout)
+	children := make([]BTreeNode[K, V], 0, fanout)
 	children = append(children, initChlid...)
 
-	return &InternalNode[K, V]{
-		baseBTreeNode: &baseBTreeNode[K]{make([]K, 0, fanout-1)},
+	node := &InternalNode[K, V]{
+		baseBTreeNode: newBaseBTreeNode[K, V](fanout),
 		children:      children,
 	}
+
+	for i := range children {
+		children[i].SetParent(node)
+	}
+
+	return node
 }
 
 func (node *InternalNode[K, V]) Insert(key K, child BTreeNode[K, V]) {
+	if len(node.children) == 0 {
+		panic("InternalNode's children can't be empty")
+	}
 
+	if node.Len() == node.Cap() {
+		panic("insert into a full leaf node")
+	}
+
+	i := Search(node.keys, key)
+	node.keys = append(node.keys[:i+1], node.keys[i:]...)
+	node.keys[i] = key
+
+	i++
+	node.children = append(node.children[:i+1], node.children[i:]...)
+	node.children[i] = child
 }
 
-func (node *InternalNode[K, V]) Split(parent *InternalNode[K, V]) (BTreeNode[K, V], K) {
-	mid := node.Len() / 2
+func (node *InternalNode[K, V]) Split() (BTreeNode[K, V], K) {
+	mid := node.Len()/2 + 1
+	parent := node.parent
 
 	newNode := NewInternalNode[K, V](node.Cap() + 1)
 	newNode.keys = append(newNode.keys, node.keys[mid+1:]...)
 	newNode.children = append(newNode.children, node.children[mid+1:]...)
+	newNode.SetParent(parent)
+	for _, child := range node.children[mid+1:] {
+		child.SetParent(newNode)
+	}
 
 	midKey := node.keys[mid]
 	node.keys = node.keys[:mid]
@@ -150,93 +214,128 @@ func (node *InternalNode[K, V]) findChild(key K) BTreeNode[K, V] {
 }
 
 type BTree[K Comparable[K], V any] struct {
-	root   BTreeNode[K, V]
-	height int
+	rwmutex  sync.RWMutex // guard root
+	root     BTreeNode[K, V]
+	leftmost *LeafNode[K, V]
+	height   int
 }
 
 func NewBTree[K Comparable[K], V any](fanout int) *BTree[K, V] {
+	root := NewLeafNode[K, V](fanout)
 	return &BTree[K, V]{
-		root:   NewLeafNode[K, V](fanout),
-		height: 1,
+		rwmutex:  sync.RWMutex{},
+		root:     root,
+		leftmost: root,
+		height:   1,
 	}
 }
 
-func (tree *BTree[K, V]) Get(key K) *V {
-	leaf := tree.GoToLeaf(tree.root, key)
-	leaf.Get(key)
+func (tree *BTree[K, V]) Get(key K) V {
+	leaf := tree.goToLeaf(tree.getRoot(), key)
+	leaf.RLock()
+	defer leaf.RUnlock()
 
 	return leaf.Get(key)
 }
 
 // Find the first element with key not less than the given key
-func (tree *BTree[K, V]) Find(key K) (K, *V) {
-	var resultKey K
-	leaf := tree.GoToLeaf(tree.root, key)
+func (tree *BTree[K, V]) Find(key K) (K, V, bool) {
+	var (
+		defaultKey   K
+		defaultValue V
+	)
+	leaf := tree.goToLeaf(tree.getRoot(), key)
+	leaf.RLock()
+	defer leaf.RUnlock()
 	if leaf.Len() == 0 {
-		return resultKey, nil
+		return defaultKey, defaultValue, false
 	}
 
 	i := Search(leaf.keys, key)
 	if i >= leaf.Len() {
-		return resultKey, nil
+		return defaultKey, defaultValue, false
 	}
 
-	return leaf.keys[i], &leaf.values[i]
+	return leaf.keys[i], leaf.values[i], true
 }
 
 func (tree *BTree[K, V]) Insert(key K, value V) {
-	path := tree.leafPath(tree.root, key)
+	var root = tree.getRoot()
+	path := tree.leafPath(root, key)
 	leaf := path[len(path)-1].(*LeafNode[K, V])
 
 	if leaf.Len() < leaf.Cap() {
 		leaf.Insert(key, value)
+		tree.unlockPath(path)
 		return
 	}
 
-	i := len(path) - 1
-	for i >= 0 && path[i].Len() == path[i].Cap() {
-		i--
+	ancientIndex := len(path) - 1
+	for ancientIndex >= 0 && path[ancientIndex].Len() == path[ancientIndex].Cap() {
+		ancientIndex--
 	}
 
 	var parent *InternalNode[K, V]
 	// The tree is full
-	if i == -1 {
-		parent = NewInternalNode(tree.Fanout(), tree.root)
+	if ancientIndex == -1 {
+		parent = NewInternalNode(tree.Fanout(), root)
+		parent.Lock()
+		root.SetParent(parent)
+		tree.setRoot(parent)
 	} else {
-		parent = path[i].(*InternalNode[K, V])
+		parent = path[ancientIndex].(*InternalNode[K, V])
+	}
+
+	if ancientIndex > 0 {
+		tree.unlockPath(path[:ancientIndex])
 	}
 
 	// Split chian
-	for i++; i < len(path); i++ {
-		node := path[i]
+	tree.split(leaf)
 
-		newNode, midKey := node.Split(parent)
+	tree.unlockPath(path[ancientIndex+1:])
+	parent.Unlock()
 
-		if node.NodeType() == InternalNodeType {
-			if key.Compare(midKey) < 0 {
-				parent = node.(*InternalNode[K, V])
-			} else {
-				parent = newNode.(*InternalNode[K, V])
-			}
-		} else {
-			if key.Compare(midKey) < 0 {
-				node.(*LeafNode[K, V]).Insert(key, value)
-			} else {
-				newNode.(*LeafNode[K, V]).Insert(key, value)
-			}
-		}
+	tree.Insert(key, value)
+}
+
+func (tree *BTree[K, V]) split(node BTreeNode[K, V]) {
+	if node.Parent().Len() == node.Parent().Cap() {
+		tree.split(node.Parent())
 	}
+
+	node.Split()
 }
 
 func (tree *BTree[K, V]) Fanout() int {
 	return tree.root.Cap() + 1
 }
 
+func (tree *BTree[K, V]) Range(fn func(key K, value V) bool) {
+	leaf := tree.leftmost
+	for leaf != nil {
+		leaf.RLock()
+
+		for i := range leaf.keys {
+			if !fn(leaf.keys[i], leaf.values[i]) {
+				return
+			}
+		}
+		right := leaf.right
+		leaf.RUnlock()
+
+		leaf = right
+	}
+}
+
 func (tree *BTree[K, V]) leafPath(node BTreeNode[K, V], key K) []BTreeNode[K, V] {
+	node.Lock()
 	nodes := make([]BTreeNode[K, V], 0, tree.height)
 
-	for ; node.NodeType() != LeafNodeType; node = node.(*InternalNode[K, V]).findChild(key) {
+	for node.NodeType() != LeafNodeType {
 		nodes = append(nodes, node)
+		node = node.(*InternalNode[K, V]).findChild(key)
+		node.Lock()
 	}
 
 	nodes = append(nodes, node)
@@ -244,10 +343,36 @@ func (tree *BTree[K, V]) leafPath(node BTreeNode[K, V], key K) []BTreeNode[K, V]
 	return nodes
 }
 
-func (tree *BTree[K, V]) GoToLeaf(node BTreeNode[K, V], key K) *LeafNode[K, V] {
+func (tree *BTree[K, V]) goToLeaf(node BTreeNode[K, V], key K) *LeafNode[K, V] {
+	node.RLock()
 	for node.NodeType() != LeafNodeType {
-		node = node.(*InternalNode[K, V]).findChild(key)
+		child := node.(*InternalNode[K, V]).findChild(key)
+		child.RLock()
+		node.RUnlock()
+		node = child
 	}
 
+	node.RUnlock()
+
 	return node.(*LeafNode[K, V])
+}
+
+func (tree *BTree[K, V]) unlockPath(path []BTreeNode[K, V]) {
+	for i := range path {
+		path[len(path)-i-1].Unlock()
+	}
+}
+
+func (tree *BTree[K, V]) getRoot() BTreeNode[K, V] {
+	tree.rwmutex.RLock()
+	defer tree.rwmutex.RUnlock()
+
+	return tree.root
+}
+
+func (tree *BTree[K, V]) setRoot(node BTreeNode[K, V]) {
+	tree.rwmutex.Lock()
+	defer tree.rwmutex.Unlock()
+
+	tree.root = node
 }

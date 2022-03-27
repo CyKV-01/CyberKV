@@ -3,84 +3,108 @@ package db
 import (
 	"sync"
 
+	"github.com/yah01/CyberKV/common"
 	. "github.com/yah01/CyberKV/common"
 )
 
 type MemTable[K Comparable[K], V any] struct {
-	rwmutex sync.RWMutex
-	table   *BTree[K, V]
+	table *BTree[K, V]
 }
 
 func NewMemTable[K Comparable[K], V any]() *MemTable[K, V] {
 	return &MemTable[K, V]{
-		rwmutex: sync.RWMutex{},
-		table:   NewBTree[K, V](32),
+		table: NewBTree[K, V](32),
 	}
 }
 
 func (mem *MemTable[K, V]) Get(key K) *V {
-	mem.rwmutex.RLock()
-	defer mem.rwmutex.RUnlock()
-
 	return mem.Get(key)
 }
 
-func (mem *MemTable[K, V]) Find(key K) (K, *V) {
-	mem.rwmutex.RLock()
-	defer mem.rwmutex.RUnlock()
-
+func (mem *MemTable[K, V]) Find(key K) (K, V, bool) {
 	return mem.table.Find(key)
 }
 
 func (mem *MemTable[K, V]) Set(key K, value V) {
-	mem.rwmutex.Lock()
-	defer mem.rwmutex.Unlock()
-
 	mem.table.Insert(key, value)
 }
 
+func (mem *MemTable[K, V]) Range(fn func(key K, value V) bool) {
+	mem.table.Range(fn)
+}
+
+type MemTableGroup[K Comparable[K], V any] [3]*MemTable[K, V]
+
+func NewMemTableGroup[K Comparable[K], V any]() *MemTableGroup[K, V] {
+	return &MemTableGroup[K, V]{NewMemTable[K, V]()}
+}
+
+func (group *MemTableGroup[K, V]) Mem() *MemTable[K, V] {
+	return group[0]
+}
+
+func (group *MemTableGroup[K, V]) Imm() *MemTable[K, V] {
+	return group[1]
+}
+
+func (group *MemTableGroup[K, V]) Fmem() *MemTable[K, V] {
+	return group[2]
+}
+
 type SlotMemTable[K Comparable[K], V any] struct {
-	rwmutex   sync.RWMutex
-	totalSize uint64
-	mem       map[SlotID][]*MemTable[K, V] // slot_id -> mem, imm, fmem
+	rwmutex sync.RWMutex
+	mem     map[SlotID]*MemTableGroup[K, V] // slot_id -> mem, imm, fmem
 }
 
 func NewSlotMemTable[K Comparable[K], V any]() *SlotMemTable[K, V] {
 	return &SlotMemTable[K, V]{
-		rwmutex:   sync.RWMutex{},
-		totalSize: 0,
-		mem:       make(map[int16][]*MemTable[K, V]),
+		rwmutex: sync.RWMutex{},
+		mem:     make(map[common.SlotID]*MemTableGroup[K, V]),
 	}
 }
 
-func (table *SlotMemTable[K, V]) GetMemTables(slot SlotID) []*MemTable[K, V] {
+func (table *SlotMemTable[K, V]) GetMemTables(slot SlotID) *MemTableGroup[K, V] {
 	table.rwmutex.RLock()
 	defer table.rwmutex.RUnlock()
 
-	tables, ok := table.mem[slot]
+	group, ok := table.mem[slot]
 	if !ok {
 		return nil
 	}
 
-	return tables
+	return group
 }
 
 func (table *SlotMemTable[K, V]) GetMemTable(slot SlotID) *MemTable[K, V] {
-	tables, ok := table.mem[slot]
+	group, ok := table.mem[slot]
 	if !ok {
 		return nil
 	}
 
-	return tables[0]
+	return group[0]
 }
 
 func (table *SlotMemTable[K, V]) CreateTables(slot SlotID) *MemTable[K, V] {
-	tables := make([]*MemTable[K, V], 3)
-	tables[0] = NewMemTable[K, V]()
+	group := NewMemTableGroup[K, V]()
+	table.mem[slot] = group
 
-	table.mem[slot] = tables
+	return group[0]
+}
 
-	return tables[0]
+func (table *SlotMemTable[K, V]) Rotate(slot SlotID) *MemTableGroup[K, V] {
+	table.rwmutex.Lock()
+	defer table.rwmutex.Unlock()
+
+	group := table.mem[slot]
+	newGroup := *group
+	for i := 2; i > 0; i-- {
+		newGroup[i] = newGroup[i-1]
+	}
+	newGroup[0] = NewMemTable[K, V]()
+
+	table.mem[slot] = &newGroup
+
+	return &newGroup
 }
 
 func (table *SlotMemTable[K, V]) Lock(slot SlotID) {

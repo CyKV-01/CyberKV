@@ -123,6 +123,7 @@ func (node *ComputeNode) GetNodeType() NodeType {
 
 type StorageNode struct {
 	*baseNode
+	proto.StorageClient
 }
 
 func NewStorageNode(info *VersionedNodeInfo) (*StorageNode, error) {
@@ -130,8 +131,17 @@ func NewStorageNode(info *VersionedNodeInfo) (*StorageNode, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	conn, err := grpc.Dial(info.Addr, grpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+
+	storageClient := proto.NewStorageClient(conn)
+
 	node := StorageNode{
-		baseNode: baseNode,
+		baseNode:      baseNode,
+		StorageClient: storageClient,
 	}
 	return &node, nil
 }

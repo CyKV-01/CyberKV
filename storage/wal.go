@@ -146,7 +146,7 @@ func (reader *LogReader) NextRecord() (*db.Record, error) {
 		reader.file, reader.curLogId, err = OpenNextLog(reader.slot, reader.curLogId)
 		if err != nil {
 			log.Info("no more log",
-				zap.Int16("slot", reader.slot),
+				zap.Uint16("slot", reader.slot),
 				zap.Int64("log_id", reader.curLogId))
 			return nil, err
 		}

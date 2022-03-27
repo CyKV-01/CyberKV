@@ -91,7 +91,7 @@ func (cluster *Cluster[T]) RecoverySlotInfo(slotInfo *proto.SlotInfo) {
 			continue
 		}
 
-		err := node.AssignSlots([]common.SlotID{int16(slotInfo.Slot)})
+		err := node.AssignSlots([]common.SlotID{common.SlotID(slotInfo.Slot)})
 		if err != nil {
 			log.Warn("failed to assign slot to node",
 				zap.Error(err))
@@ -172,8 +172,8 @@ func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) error {
 					continue
 				}
 
-				if !node.HasSlot(int16(info.Slot)) {
-					err = node.AssignSlots([]common.SlotID{int16(info.Slot)})
+				if !node.HasSlot(common.SlotID(info.Slot)) {
+					err = node.AssignSlots([]common.SlotID{common.SlotID(info.Slot)})
 					if err != nil {
 						continue
 					}

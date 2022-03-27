@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/yah01/CyberKV/proto"
 )
 
 const DataDir = "data"
@@ -52,6 +54,10 @@ func SliceContains[T comparable](slice []T, target T) bool {
 	}
 
 	return false
+}
+
+func IsOk(status *proto.Status) bool {
+	return status == nil || status.ErrCode == proto.ErrorCode_Ok
 }
 
 // Search for the first element which is not less than target

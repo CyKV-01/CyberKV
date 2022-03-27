@@ -29,6 +29,10 @@ type Coordinator struct {
 	computeCluster *Cluster[*ComputeNode]
 	storageCluster *Cluster[*StorageNode]
 
+	slotMemSizeTable []uint64
+
+	compactor *Compactor
+
 	ts common.TimeStamp
 }
 
@@ -41,6 +45,8 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		BaseNode:       common.NewBaseNode(addr, etcdClient),
 		computeCluster: NewCluster[*ComputeNode](etcdClient, replicaNum, readQuorum, writeQuorum),
 		storageCluster: NewCluster[*StorageNode](etcdClient, replicaNum, readQuorum, writeQuorum),
+
+		slotMemSizeTable: make([]uint64, common.SlotNum),
 	}
 }
 
@@ -119,7 +125,7 @@ func (coord *Coordinator) recoverySlotInfo() {
 			ok       bool
 		)
 
-		if slotInfo, ok = computeSlots[int16(slot)]; !ok {
+		if slotInfo, ok = computeSlots[common.SlotID(slot)]; !ok {
 			slotInfo = &proto.SlotInfo{
 				Slot:  uint32(slot),
 				Nodes: make(map[string]*proto.NodeInfo),
@@ -127,7 +133,7 @@ func (coord *Coordinator) recoverySlotInfo() {
 		}
 		coord.computeCluster.RecoverySlotInfo(slotInfo)
 
-		if slotInfo, ok = storageSlots[int16(slot)]; !ok {
+		if slotInfo, ok = storageSlots[common.SlotID(slot)]; !ok {
 			slotInfo = &proto.SlotInfo{
 				Slot:  uint32(slot),
 				Nodes: make(map[string]*proto.NodeInfo),
@@ -197,4 +203,12 @@ func (coord *Coordinator) GenTs() common.TimeStamp {
 
 func (coord *Coordinator) CurrentTs() common.TimeStamp {
 	return atomic.LoadUint64(&coord.ts)
+}
+
+func (coord *Coordinator) AddSlotMemSize(slot common.SlotID, size uint64) uint64 {
+	return atomic.AddUint64(&coord.slotMemSizeTable[slot], size)
+}
+
+func (coord *Coordinator) CompactMemTable(slot common.SlotID) {
+
 }
