@@ -7,6 +7,7 @@ import (
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
+	etcdcli "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 
@@ -100,7 +101,7 @@ func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) 
 
 	if common.IsOk(resp.Status) {
 		old := coord.AddSlotMemSize(slot, uint64(len(request.Key)+len(request.Value)))
-		if old >= common.WalCompactThreshold && 
+		if old >= common.WalCompactThreshold &&
 			atomic.CompareAndSwapUint64(&coord.slotMemSizeTable[slot], old, 0) {
 			coord.CompactMemTable(slot)
 		}
@@ -125,4 +126,16 @@ func (coord *Coordinator) Remove(ctx context.Context, request *proto.WriteReques
 	node := nodes[0]
 
 	return node.Remove(ctx, request)
+}
+
+// Coordinator service
+func (coord *Coordinator) AllocateSSTableID(ctx context.Context, request *proto.AllocateSSTableRequest) (*proto.AllocateSSTableResponse, error) {
+	id, err := coord.sstableIdAllocator.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	return &proto.AllocateSSTableResponse{
+		Id: id,
+	}, nil
 }

@@ -31,7 +31,8 @@ type Coordinator struct {
 
 	slotMemSizeTable []uint64
 
-	compactor *Compactor
+	compactor          *Compactor
+	sstableIdAllocator *common.IdAllocator
 
 	ts common.TimeStamp
 }
@@ -41,12 +42,19 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 	readQuorum := common.DefaultReadQuorum
 	writeQuorum := common.DefaultWriteQuorum
 
+	allocator, err := common.NewIdAllocator(context.Background(), etcdClient, common.SSTableIdKey, 100)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Coordinator{
 		BaseNode:       common.NewBaseNode(addr, etcdClient),
 		computeCluster: NewCluster[*ComputeNode](etcdClient, replicaNum, readQuorum, writeQuorum),
 		storageCluster: NewCluster[*StorageNode](etcdClient, replicaNum, readQuorum, writeQuorum),
 
-		slotMemSizeTable: make([]uint64, common.SlotNum),
+		slotMemSizeTable:   make([]uint64, common.SlotNum),
+		compactor:          NewCompactor(),
+		sstableIdAllocator: allocator,
 	}
 }
 
