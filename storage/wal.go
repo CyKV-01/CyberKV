@@ -21,9 +21,9 @@ type LogWriter struct {
 	file *os.File
 }
 
-func NewLogWriter(slot common.SlotID) *LogWriter {
+func NewLogWriter(slot common.SlotID, nodeID string) *LogWriter {
 	id := common.GenerateUniqueId()
-	logPath := common.LogPath(slot, id)
+	logPath := common.LogPath(slot, nodeID, id)
 
 	err := os.MkdirAll(path.Dir(logPath), 0777)
 	if err != nil {
@@ -123,7 +123,7 @@ func OpenNextLog(slot common.SlotID, curLogId int64) (file *os.File, newLogId in
 		return
 	}
 
-	logPath := common.LogPath(slot, newLogId)
+	logPath := ""
 	file, err = os.OpenFile(logPath, os.O_RDONLY, 0666)
 
 	return
@@ -146,7 +146,7 @@ func (reader *LogReader) NextRecord() (*db.Record, error) {
 		reader.file, reader.curLogId, err = OpenNextLog(reader.slot, reader.curLogId)
 		if err != nil {
 			log.Info("no more log",
-				zap.Uint16("slot", reader.slot),
+				zap.Int32("slot", reader.slot),
 				zap.Int64("log_id", reader.curLogId))
 			return nil, err
 		}

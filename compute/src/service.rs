@@ -1,3 +1,4 @@
+use log::error;
 use tonic::{Request, Response, Status};
 
 use crate::compute_node::ComputeNode;
@@ -53,6 +54,10 @@ impl KeyValue for KvServer {
         let response = self.storage_layer.set(request).await?.into_inner();
         if let Some(status) = &response.status {
             if status.err_code != ErrorCode::Ok as i32 {
+                error!(
+                    "failed to write storage layer, code={}, msg={}",
+                    status.err_code, status.err_message
+                );
                 return Ok(Response::new(response));
             }
         }
@@ -62,6 +67,13 @@ impl KeyValue for KvServer {
             Ok(_) => build_status(ErrorCode::Ok, ""),
             Err(err) => err,
         };
+
+        if status.err_code != ErrorCode::Ok as i32 {
+            error!(
+                "failed to write mem_table, code={}, msg={}",
+                status.err_code, status.err_message
+            );
+        }
 
         Ok(Response::new(WriteResponse {
             status: Some(status),

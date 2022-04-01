@@ -23,6 +23,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type StorageClient interface {
 	// Coordinator to storage nodes
+	CompactMemTable(ctx context.Context, in *CompactMemTableRequest, opts ...grpc.CallOption) (*CompactMemTableResponse, error)
 	Compact(ctx context.Context, in *CompactRequest, opts ...grpc.CallOption) (*CompactResponse, error)
 	// Storage nodes to leader storage node
 	PushMemTable(ctx context.Context, in *PushMemTableRequest, opts ...grpc.CallOption) (*PushMemTableResponse, error)
@@ -34,6 +35,15 @@ type storageClient struct {
 
 func NewStorageClient(cc grpc.ClientConnInterface) StorageClient {
 	return &storageClient{cc}
+}
+
+func (c *storageClient) CompactMemTable(ctx context.Context, in *CompactMemTableRequest, opts ...grpc.CallOption) (*CompactMemTableResponse, error) {
+	out := new(CompactMemTableResponse)
+	err := c.cc.Invoke(ctx, "/kvs.Storage/CompactMemTable", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *storageClient) Compact(ctx context.Context, in *CompactRequest, opts ...grpc.CallOption) (*CompactResponse, error) {
@@ -59,6 +69,7 @@ func (c *storageClient) PushMemTable(ctx context.Context, in *PushMemTableReques
 // for forward compatibility
 type StorageServer interface {
 	// Coordinator to storage nodes
+	CompactMemTable(context.Context, *CompactMemTableRequest) (*CompactMemTableResponse, error)
 	Compact(context.Context, *CompactRequest) (*CompactResponse, error)
 	// Storage nodes to leader storage node
 	PushMemTable(context.Context, *PushMemTableRequest) (*PushMemTableResponse, error)
@@ -69,6 +80,9 @@ type StorageServer interface {
 type UnimplementedStorageServer struct {
 }
 
+func (UnimplementedStorageServer) CompactMemTable(context.Context, *CompactMemTableRequest) (*CompactMemTableResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CompactMemTable not implemented")
+}
 func (UnimplementedStorageServer) Compact(context.Context, *CompactRequest) (*CompactResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Compact not implemented")
 }
@@ -86,6 +100,24 @@ type UnsafeStorageServer interface {
 
 func RegisterStorageServer(s grpc.ServiceRegistrar, srv StorageServer) {
 	s.RegisterService(&Storage_ServiceDesc, srv)
+}
+
+func _Storage_CompactMemTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompactMemTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageServer).CompactMemTable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/kvs.Storage/CompactMemTable",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageServer).CompactMemTable(ctx, req.(*CompactMemTableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Storage_Compact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -131,6 +163,10 @@ var Storage_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "kvs.Storage",
 	HandlerType: (*StorageServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CompactMemTable",
+			Handler:    _Storage_CompactMemTable_Handler,
+		},
 		{
 			MethodName: "Compact",
 			Handler:    _Storage_Compact_Handler,

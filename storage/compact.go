@@ -14,13 +14,13 @@ type SlotChan struct {
 }
 
 func NewSlotChan() *SlotChan {
+	channels := make([]chan *proto.KvData, common.DefaultReplicaNum)
+	for i := range channels {
+		channels[i] = make(chan *proto.KvData, 32)
+	}
 	return &SlotChan{
 		idx: 0,
-		ch: []chan *proto.KvData{
-			make(chan *proto.KvData, 32),
-			make(chan *proto.KvData, 32),
-			make(chan *proto.KvData, 32),
-		},
+		ch:  channels,
 	}
 }
 
@@ -36,6 +36,13 @@ func (ch *SlotChan) GetAllChan() []chan *proto.KvData {
 type Compactor struct {
 	rwmutex     sync.RWMutex
 	compactChan map[common.SlotID]*SlotChan
+}
+
+func NewCompactor() *Compactor {
+	return &Compactor{
+		rwmutex:     sync.RWMutex{},
+		compactChan: make(map[common.SlotID]*SlotChan),
+	}
 }
 
 func (compactor *Compactor) PreCompact(slot common.SlotID) *SlotChan {
@@ -78,32 +85,40 @@ func (compactor *Compactor) MergeChan(slotCh *SlotChan) chan *proto.KvData {
 			for i, ch := range slotCh.ch {
 				data, ok := next[i]
 				if ok { // already in
+					// log.Info("data is already in next map")
 					continue
 				}
 
 				for {
+					// log.Info("read data from channel")
 					data, ok = <-ch
 					if !ok {
+						// log.Info("no more data in channel")
 						break
 					}
 					// This key has been consumed
 					if ts > 0 && data.Key == key {
+						// log.Info("key has been consumed")
 						continue
 					}
+
+					break
 				}
 				if !ok {
 					continue
 				}
-				
+
 				next[i] = data
 			}
 
 			// no more data
 			if len(next) == 0 {
+				// log.Info("no more data in all channels")
 				break
 			}
 
 			// Find key
+			currentKeyCount = 0
 			for _, data := range next {
 				count := keyCount[data.Key]
 				count++
@@ -130,13 +145,18 @@ func (compactor *Compactor) MergeChan(slotCh *SlotChan) chan *proto.KvData {
 				}
 			}
 
+			// log.Info("insert kv into merge channel",
+			// 	zap.String("key", key),
+			// 	zap.String("value", value),
+			// 	zap.Uint64("timestamp", ts))
 			mergeCh <- &proto.KvData{
-				Key:       value,
+				Key:       key,
 				Value:     value,
 				Timestamp: ts,
 			}
 		}
 
+		// log.Info("merge channels done")
 		close(mergeCh)
 	}()
 

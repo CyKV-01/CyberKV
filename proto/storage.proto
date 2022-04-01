@@ -5,6 +5,7 @@ option go_package = "github.com/CyKV-01/CyberKV/proto";
 
 service Storage {
     // Coordinator to storage nodes
+    rpc CompactMemTable(CompactMemTableRequest) returns (CompactMemTableResponse) {}
     rpc Compact(CompactRequest) returns (CompactResponse) {}
 
     // Storage nodes to leader storage node
@@ -17,18 +18,39 @@ message KvData {
     uint64 timestamp = 3;
 }
 
-message CompactRequest {
+message BlockHandle {
+    string key = 1;
+    uint64 offset = 2;
+}
+
+message Index {
+    repeated BlockHandle block_handles = 1;
+}
+
+message CompactMemTableRequest {
     string leader = 1;
     string leader_addr = 2;
-    int64 slot = 3;
+    int32 slot = 3;
     uint64 timestamp = 4;
 }
 
+message CompactMemTableResponse {
+    repeated string created_sstables = 1;
+    repeated string deleted_sstables = 2;
+}
+
+message CompactRequest {
+    int32 level = 1;
+    repeated string sstables = 2;
+}
+
 message CompactResponse {
+    repeated string created_sstables = 1;
+    repeated string deleted_sstables = 2;
 }
 
 message PushMemTableRequest {
-    int64 slot = 1;
+    int32 slot = 1;
     repeated KvData data = 2;
 }
 

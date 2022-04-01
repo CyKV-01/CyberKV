@@ -7,7 +7,6 @@ import (
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
-	etcdcli "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 
@@ -138,4 +137,36 @@ func (coord *Coordinator) AllocateSSTableID(ctx context.Context, request *proto.
 	return &proto.AllocateSSTableResponse{
 		Id: id,
 	}, nil
+}
+
+func (coord *Coordinator) ReportStats(ctx context.Context, request *proto.ReportStatsRequest) (*proto.ReportStatsResponse, error) {
+	_, ok := coord.storageCluster.GetNode(request.Id)
+	if !ok { // ignore
+		return &proto.ReportStatsResponse{}, nil
+	}
+
+	maxSize := uint64(0)
+	for slot, size := range request.MemTableSize {
+		if size > common.WalCompactThreshold {
+			log.Info("schedule memtable compaction",
+				zap.Int32("slot", slot),
+				zap.Uint64("mem_table_size", size))
+			nodes := coord.storageCluster.GetNodesBySlot(slot)
+			if len(nodes) != coord.storageCluster.replicaNum {
+				log.Warn("the number of nodes will compact is not equal to the replica number",
+					zap.Int("nodesNum", len(nodes)),
+					zap.Int("replicaNum", coord.storageCluster.replicaNum))
+			}
+			go coord.compactor.CompactMemTable(slot, nodes)
+		}
+		if size > maxSize {
+			maxSize = size
+		}
+	}
+
+	log.Info("receive report",
+		zap.String("node_id", request.Id),
+		zap.Uint64("max_mem_table_size", maxSize))
+
+	return &proto.ReportStatsResponse{}, nil
 }

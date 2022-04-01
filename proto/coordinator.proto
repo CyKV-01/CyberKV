@@ -5,5 +5,25 @@ package coordinator;
 option go_package = "github.com/CyKV-01/CyberKV/proto";
 
 service Coordinator {
-    
+    rpc AllocateSSTableID(AllocateSSTableRequest) returns (AllocateSSTableResponse) {}
+    rpc ReportStats(ReportStatsRequest) returns (ReportStatsResponse) {}
+}
+
+message AllocateSSTableRequest {
+}
+
+message AllocateSSTableResponse {
+    uint64 id = 1;
+}
+
+message ReportStatsRequest {
+    string id = 1;
+    map<int32,uint64> mem_table_size = 2;   // slot_id -> mem_table_size
+    uint64 memory_usage = 3;
+    uint64 memory_cap = 4;
+    int32 cpu_usage = 5;    // percent, full usage of dual cores is 200
+}
+
+message ReportStatsResponse {
+
 }
