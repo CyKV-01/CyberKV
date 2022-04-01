@@ -31,7 +31,8 @@ type Coordinator struct {
 
 	slotMemSizeTable []uint64
 
-	compactor *Compactor
+	compactor          *Compactor
+	sstableIdAllocator *common.IdAllocator
 
 	ts common.TimeStamp
 }
@@ -41,12 +42,19 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 	readQuorum := common.DefaultReadQuorum
 	writeQuorum := common.DefaultWriteQuorum
 
+	allocator, err := common.NewIdAllocator(context.Background(), etcdClient, common.SSTableIdKey, 100)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Coordinator{
 		BaseNode:       common.NewBaseNode(addr, etcdClient),
-		computeCluster: NewCluster[*ComputeNode](etcdClient, replicaNum, readQuorum, writeQuorum),
+		computeCluster: NewCluster[*ComputeNode](etcdClient, 1, 1, 1),
 		storageCluster: NewCluster[*StorageNode](etcdClient, replicaNum, readQuorum, writeQuorum),
 
-		slotMemSizeTable: make([]uint64, common.SlotNum),
+		slotMemSizeTable:   make([]uint64, common.SlotNum),
+		compactor:          NewCompactor(),
+		sstableIdAllocator: allocator,
 	}
 }
 
@@ -67,6 +75,7 @@ func (coord *Coordinator) Start() {
 	server := grpc.NewServer()
 
 	proto.RegisterKeyValueServer(server, coord)
+	proto.RegisterCoordinatorServer(server, coord)
 	reflection.Register(server)
 	err = server.Serve(listener)
 	if err != nil {
@@ -97,7 +106,7 @@ func (coord *Coordinator) recoverySlotInfo() {
 	if err != nil {
 		panic(err)
 	}
-	log.Infof("found %d slots, recovering...", len(resp.Kvs))
+	log.Infof("found %d slots, recovering...", len(resp.Kvs)/2)
 
 	// etcd path: slots/{slot_id}/{compute/storage} -> NodeInfo
 	computeSlots := make(map[common.SlotID]*proto.SlotInfo, common.SlotNum)
@@ -119,7 +128,7 @@ func (coord *Coordinator) recoverySlotInfo() {
 		}
 	}
 
-	for slot := 0; slot < common.SlotNum; slot++ {
+	for slot := int32(0); slot < common.SlotNum; slot++ {
 		var (
 			slotInfo *proto.SlotInfo
 			ok       bool
@@ -127,7 +136,7 @@ func (coord *Coordinator) recoverySlotInfo() {
 
 		if slotInfo, ok = computeSlots[common.SlotID(slot)]; !ok {
 			slotInfo = &proto.SlotInfo{
-				Slot:  uint32(slot),
+				Slot:  slot,
 				Nodes: make(map[string]*proto.NodeInfo),
 			}
 		}
@@ -135,7 +144,7 @@ func (coord *Coordinator) recoverySlotInfo() {
 
 		if slotInfo, ok = storageSlots[common.SlotID(slot)]; !ok {
 			slotInfo = &proto.SlotInfo{
-				Slot:  uint32(slot),
+				Slot:  slot,
 				Nodes: make(map[string]*proto.NodeInfo),
 			}
 		}

@@ -3,12 +3,14 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/db"
 	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -16,10 +18,6 @@ import (
 // KeyValue service
 
 func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
-	log.Info("get request",
-		zap.String("key", request.Key),
-		zap.Uint64("timestamp", request.Ts))
-
 	slot := common.CalcSlotID(request.Key)
 
 	tables := node.mem.GetMemTables(slot)
@@ -59,17 +57,12 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 }
 
 func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
-	log.Info("set request",
-		zap.String("key", request.Key),
-		zap.Uint64("timestamp", request.Ts),
-		zap.String("value", request.Value))
-
 	slot := common.CalcSlotID(request.Key)
 
 	node.walMutex.Lock()
 	wal, ok := node.wals[slot]
 	if !ok {
-		wal = NewLogWriter(slot)
+		wal = NewLogWriter(slot, node.Info.Id)
 		node.wals[slot] = wal
 	}
 	node.walMutex.Unlock()
@@ -94,6 +87,7 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 		mem = node.mem.CreateTables(slot)
 	}
 	mem.Set(internalKey, request.Value)
+	node.mem.AddSize(slot, uint64(len(request.Key)+len(request.Value)))
 	node.mem.Unlock(slot)
 
 	return &proto.WriteResponse{}, nil
@@ -105,12 +99,17 @@ func (node *StorageNode) Remove(ctx context.Context, request *proto.WriteRequest
 
 // Storage service
 // Coordinator to storage nodes
-func (node *StorageNode) Compact(ctx context.Context, request *proto.CompactRequest) (*proto.CompactResponse, error) {
+func (node *StorageNode) CompactMemTable(ctx context.Context, request *proto.CompactMemTableRequest) (*proto.CompactMemTableResponse, error) {
 	slot := common.SlotID(request.Slot)
 	group := node.mem.Rotate(slot)
 	imm := group.Imm()
 
 	if request.Leader == node.Info.Id {
+		log.Info("ready to compact memtable as leader",
+			zap.Int32("slot", slot))
+
+		log.Info("create slot channel",
+			zap.Int32("slot", slot))
 		slotCh := node.compactor.PreCompact(slot)
 		ch := slotCh.AcquireChan()
 
@@ -129,14 +128,73 @@ func (node *StorageNode) Compact(ctx context.Context, request *proto.CompactRequ
 		}()
 
 		mergeCh := node.compactor.MergeChan(slotCh)
+		if len(mergeCh) == 0 {
+			log.Warn("merged channel is empty!")
+		}
 
-		node.WriteSSTable(mergeCh)
+		err := node.tableMgr.WriteSSTable(ctx, mergeCh, 1)
+		if err != nil {
+			log.Error("failed to write sstable",
+				zap.Int("level", 1),
+				zap.Error(err))
+			return nil, err
+		}
+
+		log.Info("compact done")
+	} else {
+		log.Info("ready to compact memtable as follower",
+			zap.Int32("slot", slot))
+
+		data := make([]*proto.KvData, 0, 100)
+		imm.Range(func(key db.InternalKey, value string) bool {
+			data = append(data, &proto.KvData{
+				Key:       key.UserKey(),
+				Value:     value,
+				Timestamp: key.GetTimeStamp(),
+			})
+
+			return true
+		})
+		req := proto.PushMemTableRequest{
+			Slot: request.Slot,
+			Data: data,
+		}
+
+		conn, err := grpc.Dial(request.LeaderAddr, grpc.WithInsecure())
+		if err != nil {
+			log.Error("failed to connect to leader",
+				zap.String("leader_addr", request.LeaderAddr),
+				zap.Error(err))
+			return nil, err
+		}
+		cli := proto.NewStorageClient(conn)
+
+		_, err = cli.PushMemTable(ctx, &req)
+		if err != nil {
+			log.Error("failed to push memtable to leader",
+				zap.String("leader_addr", request.LeaderAddr),
+				zap.Error(err))
+			return nil, err
+		}
 	}
 
-	return &proto.CompactResponse{}, nil
+	return &proto.CompactMemTableResponse{}, nil
 }
 
 // Storage nodes to leader storage node
 func (node *StorageNode) PushMemTable(ctx context.Context, request *proto.PushMemTableRequest) (*proto.PushMemTableResponse, error) {
-	return nil, nil
+	slotCh := node.compactor.GetChan(request.Slot)
+	for slotCh == nil {
+		time.Sleep(time.Second)
+		slotCh = node.compactor.GetChan(request.Slot)
+	}
+	ch := slotCh.AcquireChan()
+
+	for _, data := range request.Data {
+		ch <- data
+	}
+
+	close(ch)
+
+	return &proto.PushMemTableResponse{}, nil
 }

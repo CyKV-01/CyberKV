@@ -64,7 +64,7 @@ func NewCluster[T Node](meta *etcdcli.Client, replicaNum, readQuorum, writeQuoru
 	for i := 0; i < common.SlotNum; i++ {
 		slot := common.SlotID(i)
 		cluster.slots[slot] = &proto.SlotInfo{
-			Slot:  uint32(slot),
+			Slot:  slot,
 			Nodes: make(map[string]*proto.NodeInfo, replicaNum),
 		}
 	}
@@ -134,7 +134,7 @@ func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) error {
 		if !ok {
 			old := cluster.GetSlotInfo(slot)
 			newInfo = &proto.SlotInfo{
-				Slot:  uint32(slot),
+				Slot:  slot,
 				Nodes: make(map[string]*proto.NodeInfo, len(old.Nodes)),
 			}
 			for id, info := range old.Nodes {
@@ -199,9 +199,11 @@ func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) error {
 
 	wg.Wait()
 
+	cluster.rwmutex.Lock()
 	for id, info := range newSlotInfos {
 		cluster.slots[id] = info
 	}
+	cluster.rwmutex.Unlock()
 
 	return nil
 }
@@ -257,9 +259,10 @@ func (cluster *Cluster[T]) GetNode(id common.NodeID) (T, bool) {
 // }
 
 func (cluster *Cluster[T]) GetNodesBySlot(slot common.SlotID) []T {
+	cluster.rwmutex.RLock()
 	slotInfo := cluster.slots[slot]
+	cluster.rwmutex.RUnlock()
 
-	log.Infof("slot=%+v", slotInfo)
 	nodes := make([]T, 0, len(slotInfo.Nodes))
 	for _, nodeInfo := range slotInfo.Nodes {
 		nodes = append(nodes, cluster.nodes[nodeInfo.Id])

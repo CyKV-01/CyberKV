@@ -6,6 +6,6 @@ option go_package = "github.com/CyKV-01/CyberKV/proto";
 import "node.proto";
 
 message SlotInfo {
-    uint32 slot = 1;
+    int32 slot = 1;
     map<string, node.NodeInfo> nodes = 2;
 }

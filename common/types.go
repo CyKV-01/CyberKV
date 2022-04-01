@@ -1,7 +1,7 @@
 package common
 
 type (
-	SlotID    = uint16
+	SlotID    = int32
 	NodeID    = string
 	TimeStamp = uint64
 

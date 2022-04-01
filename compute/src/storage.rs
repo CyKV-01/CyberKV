@@ -1,11 +1,15 @@
+use dashmap::DashMap;
 use futures::future::join_all;
+use log::{error, info};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use tonic::transport::Channel;
 use tonic::{Response, Status};
 
+use crate::conn_pool::ConnCache;
 use crate::proto::kvs::{ReadRequest, WriteRequest, WriteResponse};
 use crate::proto::node::NodeInfo;
 use crate::types::Value;
@@ -17,6 +21,7 @@ use crate::{
     types::SlotID,
     util::*,
 };
+
 #[derive(Debug)]
 pub struct StorageNode {
     info: NodeInfo,
@@ -25,8 +30,18 @@ pub struct StorageNode {
 
 impl StorageNode {
     pub async fn new(info: NodeInfo) -> Result<Self, tonic::transport::Error> {
-        let client = KeyValueClient::connect(format!("http://{}", info.addr)).await?;
+        let channel = Channel::from_shared(format!("http://{}", info.addr))
+            .unwrap()
+            .timeout(Duration::from_secs(1))
+            .connect()
+            .await?;
+
+        let client = KeyValueClient::new(channel);
         Ok(Self { info, client })
+    }
+
+    pub fn get_client(&self) -> KeyValueClient<Channel> {
+        self.client.clone()
     }
 
     pub async fn get(&mut self, request: ReadRequest) -> Result<Response<ReadResponse>, Status> {
@@ -50,7 +65,7 @@ pub struct StorageLayer {
     replica_num: usize,
     read_quorum: usize,
     write_quorum: usize,
-    slot_node_index: RwLock<HashMap<SlotID, Vec<StorageNode>>>,
+    conn_cache: ConnCache,
 }
 
 impl StorageLayer {
@@ -59,7 +74,7 @@ impl StorageLayer {
             replica_num,
             read_quorum,
             write_quorum,
-            slot_node_index: RwLock::new(HashMap::new()),
+            conn_cache: ConnCache::new(),
         }
     }
 
@@ -122,13 +137,13 @@ impl StorageLayer {
 
         let mut nodes = Vec::with_capacity(request.info.len());
         for info in &request.info {
-            match StorageNode::new(info.clone()).await {
-                Ok(node) => nodes.push(node),
+            match self.conn_cache.get_or_insert(info).await {
+                Ok(client) => nodes.push(client),
                 Err(err) => {
-                    return Err(Status::failed_precondition(format!(
-                        "failed to connect storage node, err={}",
-                        err
-                    )))
+                    error!(
+                        "failed to connect storage node, addr={}, code={}, msg={}",
+                        info.addr, err.err_code, err.err_message
+                    )
                 }
             }
         }
@@ -182,27 +197,17 @@ impl StorageLayer {
         // let slot = calc_slot(&request.key);
         let mut nodes = Vec::with_capacity(request.info.len());
         for info in &request.info {
-            match StorageNode::new(info.clone()).await {
-                Ok(node) => nodes.push(node),
+            match self.conn_cache.get_or_insert(info).await {
+                Ok(client) => nodes.push(client),
                 Err(err) => {
-                    return Err(Status::failed_precondition(format!(
-                        "failed to connect storage node, err={}",
-                        err
-                    )))
+                    error!(
+                        "failed to connect storage node, addr={}, code={}, msg={}",
+                        info.addr, err.err_code, err.err_message
+                    )
                 }
             }
         }
 
-        // let mut slot_node_index = self.slot_node_index.write().await;
-        // slot_node_index.insert(slot, nodes);
-        // let slot_node_index = self.slot_node_index.read().await;
-        // let nodes = slot_node_index.get_mut(&slot);
-
-        // if nodes.is_none() {
-        //     return Err(Status::failed_precondition("no available storage node"));
-        // }
-
-        // let nodes = nodes.unwrap();
         if nodes.len() < self.write_quorum {
             return Err(Status::failed_precondition("no enough storage node"));
         }
@@ -212,7 +217,7 @@ impl StorageLayer {
             write_results.push(node.set(request.clone()));
         }
 
-        // TODO: wait until reaching read quorum
+        // TODO: wait until reaching write quorum
         let results = join_all(write_results).await;
 
         let mut write_counts = 0;
@@ -223,11 +228,19 @@ impl StorageLayer {
                     break;
                 }
             } else {
+                error!(
+                    "failed to write storage node, err={}",
+                    result.err().unwrap()
+                );
                 continue;
             }
         }
 
         if write_counts < self.write_quorum {
+            error!(
+                "failed to reach write quorum, write_count={}, write_quorum={}",
+                write_counts, self.write_quorum
+            );
             return Err(Status::failed_precondition(
                 "no enough storage node to reach write quorum",
             ));

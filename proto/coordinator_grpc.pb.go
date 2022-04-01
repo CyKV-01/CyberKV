@@ -7,7 +7,10 @@
 package proto
 
 import (
+	context "context"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -19,6 +22,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CoordinatorClient interface {
+	AllocateSSTableID(ctx context.Context, in *AllocateSSTableRequest, opts ...grpc.CallOption) (*AllocateSSTableResponse, error)
+	ReportStats(ctx context.Context, in *ReportStatsRequest, opts ...grpc.CallOption) (*ReportStatsResponse, error)
 }
 
 type coordinatorClient struct {
@@ -29,10 +34,30 @@ func NewCoordinatorClient(cc grpc.ClientConnInterface) CoordinatorClient {
 	return &coordinatorClient{cc}
 }
 
+func (c *coordinatorClient) AllocateSSTableID(ctx context.Context, in *AllocateSSTableRequest, opts ...grpc.CallOption) (*AllocateSSTableResponse, error) {
+	out := new(AllocateSSTableResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.Coordinator/AllocateSSTableID", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) ReportStats(ctx context.Context, in *ReportStatsRequest, opts ...grpc.CallOption) (*ReportStatsResponse, error) {
+	out := new(ReportStatsResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.Coordinator/ReportStats", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CoordinatorServer is the server API for Coordinator service.
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility
 type CoordinatorServer interface {
+	AllocateSSTableID(context.Context, *AllocateSSTableRequest) (*AllocateSSTableResponse, error)
+	ReportStats(context.Context, *ReportStatsRequest) (*ReportStatsResponse, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -40,6 +65,12 @@ type CoordinatorServer interface {
 type UnimplementedCoordinatorServer struct {
 }
 
+func (UnimplementedCoordinatorServer) AllocateSSTableID(context.Context, *AllocateSSTableRequest) (*AllocateSSTableResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AllocateSSTableID not implemented")
+}
+func (UnimplementedCoordinatorServer) ReportStats(context.Context, *ReportStatsRequest) (*ReportStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportStats not implemented")
+}
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 
 // UnsafeCoordinatorServer may be embedded to opt out of forward compatibility for this service.
@@ -53,13 +84,58 @@ func RegisterCoordinatorServer(s grpc.ServiceRegistrar, srv CoordinatorServer) {
 	s.RegisterService(&Coordinator_ServiceDesc, srv)
 }
 
+func _Coordinator_AllocateSSTableID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AllocateSSTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).AllocateSSTableID(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/coordinator.Coordinator/AllocateSSTableID",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).AllocateSSTableID(ctx, req.(*AllocateSSTableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_ReportStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).ReportStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/coordinator.Coordinator/ReportStats",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).ReportStats(ctx, req.(*ReportStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Coordinator_ServiceDesc is the grpc.ServiceDesc for Coordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Coordinator_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "coordinator.Coordinator",
 	HandlerType: (*CoordinatorServer)(nil),
-	Methods:     []grpc.MethodDesc{},
-	Streams:     []grpc.StreamDesc{},
-	Metadata:    "coordinator.proto",
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "AllocateSSTableID",
+			Handler:    _Coordinator_AllocateSSTableID_Handler,
+		},
+		{
+			MethodName: "ReportStats",
+			Handler:    _Coordinator_ReportStats_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "coordinator.proto",
 }

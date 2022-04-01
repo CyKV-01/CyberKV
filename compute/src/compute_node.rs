@@ -10,7 +10,6 @@ use crate::proto::kvs::{key_value_server::*, *};
 use crate::proto::node::*;
 use crate::proto::status::{self, ErrorCode};
 use crate::service::{self, KvServer};
-use crate::storage::StorageLayer;
 use crate::util::*;
 use crate::types::Value;
 use etcd_client::{LeaseGrantOptions, PutOptions};

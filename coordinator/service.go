@@ -100,7 +100,7 @@ func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) 
 
 	if common.IsOk(resp.Status) {
 		old := coord.AddSlotMemSize(slot, uint64(len(request.Key)+len(request.Value)))
-		if old >= common.WalCompactThreshold && 
+		if old >= common.WalCompactThreshold &&
 			atomic.CompareAndSwapUint64(&coord.slotMemSizeTable[slot], old, 0) {
 			coord.CompactMemTable(slot)
 		}
@@ -125,4 +125,48 @@ func (coord *Coordinator) Remove(ctx context.Context, request *proto.WriteReques
 	node := nodes[0]
 
 	return node.Remove(ctx, request)
+}
+
+// Coordinator service
+func (coord *Coordinator) AllocateSSTableID(ctx context.Context, request *proto.AllocateSSTableRequest) (*proto.AllocateSSTableResponse, error) {
+	id, err := coord.sstableIdAllocator.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	return &proto.AllocateSSTableResponse{
+		Id: id,
+	}, nil
+}
+
+func (coord *Coordinator) ReportStats(ctx context.Context, request *proto.ReportStatsRequest) (*proto.ReportStatsResponse, error) {
+	_, ok := coord.storageCluster.GetNode(request.Id)
+	if !ok { // ignore
+		return &proto.ReportStatsResponse{}, nil
+	}
+
+	maxSize := uint64(0)
+	for slot, size := range request.MemTableSize {
+		if size > common.WalCompactThreshold {
+			log.Info("schedule memtable compaction",
+				zap.Int32("slot", slot),
+				zap.Uint64("mem_table_size", size))
+			nodes := coord.storageCluster.GetNodesBySlot(slot)
+			if len(nodes) != coord.storageCluster.replicaNum {
+				log.Warn("the number of nodes will compact is not equal to the replica number",
+					zap.Int("nodesNum", len(nodes)),
+					zap.Int("replicaNum", coord.storageCluster.replicaNum))
+			}
+			go coord.compactor.CompactMemTable(slot, nodes)
+		}
+		if size > maxSize {
+			maxSize = size
+		}
+	}
+
+	log.Info("receive report",
+		zap.String("node_id", request.Id),
+		zap.Uint64("max_mem_table_size", maxSize))
+
+	return &proto.ReportStatsResponse{}, nil
 }

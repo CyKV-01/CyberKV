@@ -54,12 +54,18 @@ func (group *MemTableGroup[K, V]) Fmem() *MemTable[K, V] {
 type SlotMemTable[K Comparable[K], V any] struct {
 	rwmutex sync.RWMutex
 	mem     map[SlotID]*MemTableGroup[K, V] // slot_id -> mem, imm, fmem
+
+	sizeTableRwMutex sync.RWMutex
+	memSize          map[SlotID]uint64
 }
 
 func NewSlotMemTable[K Comparable[K], V any]() *SlotMemTable[K, V] {
 	return &SlotMemTable[K, V]{
 		rwmutex: sync.RWMutex{},
 		mem:     make(map[common.SlotID]*MemTableGroup[K, V]),
+
+		sizeTableRwMutex: sync.RWMutex{},
+		memSize:          make(map[int32]uint64),
 	}
 }
 
@@ -113,6 +119,25 @@ func (table *SlotMemTable[K, V]) Lock(slot SlotID) {
 
 func (table *SlotMemTable[K, V]) Unlock(slot SlotID) {
 	table.rwmutex.Unlock()
+}
+
+func (table *SlotMemTable[K, V]) AddSize(slot SlotID, size uint64) {
+	// table.sizeTableRwMutex.Lock()
+	// defer table.sizeTableRwMutex.Unlock()
+
+	table.memSize[slot] += size
+}
+
+func (table *SlotMemTable[K, V]) GetSizeTable() map[SlotID]uint64 {
+	table.rwmutex.RLock()
+	defer table.rwmutex.RUnlock()
+
+	clone := make(map[SlotID]uint64, len(table.memSize))
+	for key, value := range table.memSize {
+		clone[key] = value
+	}
+
+	return clone
 }
 
 // func (table *SlotMemTable[K, V]) Find(slot SlotID, key K) (K, *V) {
