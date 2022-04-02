@@ -21,7 +21,7 @@ import (
 const SSTableRootDir = "data"
 
 type StorageNode struct {
-	*common.BaseNode
+	*common.BaseComponent
 	proto.UnimplementedKeyValueServer
 	proto.UnimplementedStorageServer
 
@@ -42,7 +42,7 @@ type StorageNode struct {
 
 func NewStorageNode(addr string, etcd *etcdcli.Client, minio *minio.Client) *StorageNode {
 	return &StorageNode{
-		BaseNode: common.NewBaseNode(addr, etcd),
+		BaseComponent: common.NewBaseComponent(addr, etcd),
 
 		globalRwMutex:     sync.RWMutex{},
 		memTableRwMutexes: make(map[common.SlotID]sync.RWMutex),

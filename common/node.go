@@ -13,30 +13,30 @@ import (
 	"go.uber.org/zap"
 )
 
-type Node interface {
+type Component interface {
 	Register(name string)
 	Start()
 	Recovery()
 }
 
-type BaseNode struct {
+type BaseComponent struct {
 	Meta *etcdcli.Client
 	Info *proto.NodeInfo
 }
 
-func NewBaseNode(addr string, etcd *etcdcli.Client) *BaseNode {
+func NewBaseComponent(addr string, etcd *etcdcli.Client) *BaseComponent {
 	info := &proto.NodeInfo{
 		Id:   uuid.NewString(),
 		Addr: addr,
 	}
 
-	return &BaseNode{
+	return &BaseComponent{
 		Info: info,
 		Meta: etcd,
 	}
 }
 
-func (node *BaseNode) Register(name string) {
+func (node *BaseComponent) Register(name string) {
 	ctx := context.Background()
 	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
 

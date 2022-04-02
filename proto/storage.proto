@@ -3,6 +3,8 @@ syntax = "proto3";
 package kvs;
 option go_package = "github.com/CyKV-01/CyberKV/proto";
 
+import "version.proto";
+
 service Storage {
     // Coordinator to storage nodes
     rpc CompactMemTable(CompactMemTableRequest) returns (CompactMemTableResponse) {}
@@ -35,8 +37,8 @@ message CompactMemTableRequest {
 }
 
 message CompactMemTableResponse {
-    repeated string created_sstables = 1;
-    repeated string deleted_sstables = 2;
+    repeated version.SSTableLevel created_sstables = 1;
+    repeated version.SSTableLevel deleted_sstables = 2;
 }
 
 message CompactRequest {
@@ -45,8 +47,8 @@ message CompactRequest {
 }
 
 message CompactResponse {
-    repeated string created_sstables = 1;
-    repeated string deleted_sstables = 2;
+    repeated version.SSTableLevel created_sstables = 1;
+    repeated version.SSTableLevel deleted_sstables = 2;
 }
 
 message PushMemTableRequest {

@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package version;
+option go_package = "github.com/CyKV-01/CyberKV/proto";
+
+message VersionSet {
+    uint64 current = 1;
+    uint64 last = 2;
+}
+
+message Version {
+    uint64 version_id = 1;
+    map<int32, SSTableLevel> sstables = 2;
+}
+
+message SSTableLevel {
+    int32 level = 1;
+    repeated string sstables = 2;
+}

@@ -19,10 +19,10 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-var _ common.Node = (*Coordinator)(nil)
+var _ common.Component = (*Coordinator)(nil)
 
 type Coordinator struct {
-	*common.BaseNode
+	*common.BaseComponent
 	proto.UnimplementedKeyValueServer
 	proto.UnimplementedCoordinatorServer
 
@@ -32,7 +32,8 @@ type Coordinator struct {
 	slotMemSizeTable []uint64
 
 	compactor          *Compactor
-	sstableIdAllocator *common.IdAllocator
+	versionSet         *VersionSet
+	sstableIdAllocator *common.MetaIdAllocator
 
 	ts common.TimeStamp
 }
@@ -42,18 +43,24 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 	readQuorum := common.DefaultReadQuorum
 	writeQuorum := common.DefaultWriteQuorum
 
-	allocator, err := common.NewIdAllocator(context.Background(), etcdClient, common.SSTableIdKey, 100)
+	versionSet, err := NewVersionSet(etcdClient)
+	if err != nil {
+		panic(err)
+	}
+
+	allocator, err := common.NewMetaIdAllocator(context.Background(), etcdClient, common.SSTableIdKey, 100)
 	if err != nil {
 		panic(err)
 	}
 
 	return &Coordinator{
-		BaseNode:       common.NewBaseNode(addr, etcdClient),
+		BaseComponent:  common.NewBaseComponent(addr, etcdClient),
 		computeCluster: NewCluster[*ComputeNode](etcdClient, 1, 1, 1),
 		storageCluster: NewCluster[*StorageNode](etcdClient, replicaNum, readQuorum, writeQuorum),
 
 		slotMemSizeTable:   make([]uint64, common.SlotNum),
-		compactor:          NewCompactor(),
+		compactor:          NewCompactor(versionSet),
+		versionSet:         versionSet,
 		sstableIdAllocator: allocator,
 	}
 }
