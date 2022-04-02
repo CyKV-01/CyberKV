@@ -9,6 +9,8 @@ const (
 	ServicePrefix = "services"
 	SlotPrefix    = "slots"
 	SSTableIdKey  = "sstable_id"
+	VersionSetKey = "version_set"
+	VersionPrefix = "version"
 
 	DefaultTTL = 10
 

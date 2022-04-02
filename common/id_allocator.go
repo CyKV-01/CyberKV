@@ -5,11 +5,17 @@ import (
 	"fmt"
 	"strconv"
 	"sync/atomic"
+	"time"
 
+	"github.com/sony/sonyflake"
 	etcdcli "go.etcd.io/etcd/client/v3"
 )
 
-type IdAllocator struct {
+type IdAllocator interface {
+	Next() (uint64, error)
+}
+
+type MetaIdAllocator struct {
 	meta      *etcdcli.Client
 	key       string
 	currentId uint64
@@ -17,7 +23,7 @@ type IdAllocator struct {
 	batchSize uint64
 }
 
-func NewIdAllocator(ctx context.Context, meta *etcdcli.Client, key string, batchSize uint64) (*IdAllocator, error) {
+func NewMetaIdAllocator(ctx context.Context, meta *etcdcli.Client, key string, batchSize uint64) (*MetaIdAllocator, error) {
 	resp, err := meta.Get(ctx, key)
 	if err != nil {
 		return nil, err
@@ -38,7 +44,7 @@ func NewIdAllocator(ctx context.Context, meta *etcdcli.Client, key string, batch
 		return nil, err
 	}
 
-	return &IdAllocator{
+	return &MetaIdAllocator{
 		meta:      meta,
 		key:       key,
 		currentId: id,
@@ -47,7 +53,7 @@ func NewIdAllocator(ctx context.Context, meta *etcdcli.Client, key string, batch
 	}, nil
 }
 
-func (allocator *IdAllocator) Next() (uint64, error) {
+func (allocator *MetaIdAllocator) Next() (uint64, error) {
 	if allocator.currentId == allocator.endId {
 		var (
 			ctx   = context.Background()
@@ -85,3 +91,9 @@ func (allocator *IdAllocator) Next() (uint64, error) {
 
 	return atomic.AddUint64(&allocator.currentId, 1) - 1, nil
 }
+
+var (
+	Sonyflake = sonyflake.NewSonyflake(sonyflake.Settings{
+		StartTime: time.Now(),
+	})
+)

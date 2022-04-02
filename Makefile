@@ -17,10 +17,10 @@ proto:
 	@sh scripts/generate_proto.sh
 
 clean-all: clean
-	@rm cmd/coordinator/coordinator cmd/storage-node/storage-node -v
+	@rm cmd/coordinator/coordinator cmd/storage-node/storage-node -v -f
 	@cd compute && cargo clean
 
 clean:
-	@rm cmd/storage-node/data/*/*.log -v
+	@rm cmd/storage-node/data/*/*.log -v -f
 	@etcdctl del "slots" --prefix
 	@etcdctl del "services" --prefix

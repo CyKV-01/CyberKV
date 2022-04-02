@@ -13,12 +13,14 @@ import (
 type Compactor struct {
 	rwmutex               sync.RWMutex
 	activeMemTableCompact map[common.SlotID]struct{}
+	versionSet            *VersionSet
 }
 
-func NewCompactor() *Compactor {
+func NewCompactor(versionSet *VersionSet) *Compactor {
 	return &Compactor{
 		rwmutex:               sync.RWMutex{},
 		activeMemTableCompact: make(map[common.SlotID]struct{}),
+		versionSet:            versionSet,
 	}
 }
 
@@ -50,11 +52,20 @@ func (compactor *Compactor) CompactMemTable(slot common.SlotID, nodes []*Storage
 		wg.Add(1)
 		go func(node *StorageNode) {
 			defer wg.Done()
-			_, err := node.CompactMemTable(ctx, &req)
+			resp, err := node.CompactMemTable(ctx, &req)
 			if err != nil {
 				log.Error("failed to request storage node to compact",
 					zap.String("node_id", node.info.Id),
 					zap.Error(err))
+				return
+			}
+
+			if node.info.Id == leader.info.Id {
+				_, err = compactor.versionSet.Edit(resp.CreatedSstables, resp.DeletedSstables)
+				if err != nil {
+					log.Error("failed to update version set",
+						zap.Error(err))
+				}
 			}
 		}(node)
 	}
