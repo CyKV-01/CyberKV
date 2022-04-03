@@ -176,6 +176,10 @@ impl StorageLayer {
                     break;
                 }
             } else {
+                error!(
+                    "failed to read from storage node, err={}",
+                    result.unwrap_err()
+                );
                 continue;
             }
         }

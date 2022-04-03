@@ -33,6 +33,7 @@ impl KvServer {
 impl KeyValue for KvServer {
     async fn get(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
         let request = request.into_inner();
+        let key = request.key.clone();
 
         let response = match self.mem_table.get(&request.key) {
             Some(value) => ReadResponse {
@@ -40,7 +41,25 @@ impl KeyValue for KvServer {
                 ts: value.timestamp,
                 status: None,
             },
-            None => self.storage_layer.get(request).await?.into_inner(),
+            None => {
+                let response = self.storage_layer.get(request).await?.into_inner();
+                let new_value = Value {
+                    timestamp: response.ts,
+                    value: response.value.clone(),
+                };
+
+                self.mem_table
+                    .entry(key)
+                    .and_modify(|value| {
+                        if value.timestamp < response.ts {
+                            value.timestamp = new_value.timestamp;
+                            value.value = new_value.value.clone();
+                        }
+                    })
+                    .or_insert(new_value);
+
+                response
+            }
         };
 
         Ok(Response::new(response))
