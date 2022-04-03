@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path"
 	"time"
 
@@ -39,6 +40,9 @@ func NewBaseComponent(addr string, etcd *etcdcli.Client) *BaseComponent {
 func (node *BaseComponent) Register(name string) {
 	ctx := context.Background()
 	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
+
+	log.Info("register...",
+		zap.String("name", name))
 
 	resp, err := node.Meta.Grant(ctx, DefaultTTL)
 	if err != nil {
@@ -81,6 +85,21 @@ func (node *BaseComponent) Register(name string) {
 		etcdcli.WithLease(resp.ID))
 	if err != nil {
 		log.Errorf("failed to register, err=%v", err)
+		panic(err)
+	}
+
+	file, err := os.Create("component.json")
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = file.Write(infoBytes)
+	if err != nil {
+		panic(err)
+	}
+
+	err = file.Close()
+	if err != nil {
 		panic(err)
 	}
 }

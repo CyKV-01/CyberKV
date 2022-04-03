@@ -2,3 +2,4 @@ cmd/coordinator/coordinator
 cmd/storage-node/storage-node
 cmd/storage-node/data
 .VSCodeCounter/
+**/component.json

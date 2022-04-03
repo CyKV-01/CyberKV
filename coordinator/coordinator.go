@@ -43,11 +43,13 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 	readQuorum := common.DefaultReadQuorum
 	writeQuorum := common.DefaultWriteQuorum
 
+	log.Info("create version set...")
 	versionSet, err := NewVersionSet(etcdClient)
 	if err != nil {
 		panic(err)
 	}
 
+	log.Info("create id allocator...")
 	allocator, err := common.NewMetaIdAllocator(context.Background(), etcdClient, common.SSTableIdKey, 100)
 	if err != nil {
 		panic(err)
