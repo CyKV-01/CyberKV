@@ -31,7 +31,7 @@ func NewTableManager(bucketName string, store *minio.Client, coord proto.Coordin
 
 // Todo: get sstable and index concurrently
 func (mgr *TableManager) Get(ctx context.Context, key db.InternalKey) (value string, ok bool, err error) {
-	for level := 1; level <= common.MaxLevel; level++ {
+	for level := 0; level < common.MaxLevel; level++ {
 		objects := mgr.store.ListObjects(ctx, mgr.bucketName, minio.ListObjectsOptions{
 			WithMetadata: true,
 			Prefix:       common.SSTableDataLevelPrefix(level),

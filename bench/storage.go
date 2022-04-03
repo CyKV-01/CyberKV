@@ -73,43 +73,48 @@ func main() {
 		}(c)
 	}
 	wg.Wait()
-
-	// for c := 0; c < concurrency; c++ {
-	// 	wg.Add(1)
-	// 	go func(idx int) {
-	// 		defer wg.Done()
-
-	// 		begin := time.Now()
-	// 		for i := 0; i < cnt; i++ {
-	// 			if i%100 == 0 {
-	// 				end := time.Now()
-	// 				msg := fmt.Sprintf("reading data... progress: %d/%d", i, cnt)
-	// 				log.Info(msg,
-	// 					zap.Int("goroutine", idx),
-	// 					zap.Float64("QPS", 100/end.Sub(begin).Seconds()))
-	// 				begin = end
-	// 			}
-
-	// 			ctx := context.Background()
-	// 			ctx, _ = context.WithTimeout(ctx, 5*time.Second)
-
-	// 			req := &proto.ReadRequest{
-	// 				Key:   fmt.Sprintf("key-%d", i%10000),
-	// 			}
-
-	// 			_, err := cli.Get(ctx, req)
-	// 			if err != nil {
-	// 				log.Warn("failed to get",
-	// 					zap.Int("goroutine", idx),
-	// 					zap.String("key", req.Key),
-	// 					zap.Error(err))
-	// 			}
-	// 		}
-	// 	}(c)
-	// }
-	// wg.Wait()
 	end := time.Now()
-
 	duration := end.Sub(begin)
-	fmt.Printf("TPS: %v", float64(cnt*concurrency)/duration.Seconds())
+	tps := float64(cnt*concurrency) / duration.Seconds()
+
+	begin = time.Now()
+	for c := 0; c < concurrency; c++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			begin := time.Now()
+			for i := 0; i < cnt; i++ {
+				if i%100 == 0 {
+					end := time.Now()
+					msg := fmt.Sprintf("reading data... progress: %d/%d", i, cnt)
+					log.Info(msg,
+						zap.Int("goroutine", idx),
+						zap.Float64("QPS", 100/end.Sub(begin).Seconds()))
+					begin = end
+				}
+
+				ctx := context.Background()
+				ctx, _ = context.WithTimeout(ctx, 5*time.Second)
+
+				req := &proto.ReadRequest{
+					Key: fmt.Sprintf("key-%d", i%10000),
+				}
+
+				_, err := cli.Get(ctx, req)
+				if err != nil {
+					log.Warn("failed to get",
+						zap.Int("goroutine", idx),
+						zap.String("key", req.Key),
+						zap.Error(err))
+				}
+			}
+		}(c)
+	}
+	wg.Wait()
+	end = time.Now()
+	duration = end.Sub(begin)
+	qps := float64(cnt*concurrency) / duration.Seconds()
+
+	fmt.Printf("TPS: %v, QPS: %v", tps, qps)
 }

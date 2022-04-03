@@ -151,10 +151,12 @@ func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *p
 
 	mergeCh := node.compactor.MergeChan(slotCh, math.MaxUint64)
 
-	created, deleted, err := node.tableMgr.WriteSSTable(ctx, mergeCh, 0)
+	newSSTable := db.NewSSTableFromDataCh(mergeCh)
+	err := node.tableMgr.writeSSTable(ctx, newSSTable, 0)
+	// created, deleted, err := node.tableMgr.WriteSSTable(ctx, mergeCh, 0)
 	if err != nil {
 		log.Error("failed to write sstable",
-			zap.Int("level", 1),
+			zap.Int("level", 0),
 			zap.Error(err))
 		return nil, err
 	}
@@ -176,13 +178,14 @@ func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *p
 		}
 	}
 
-	for _, sstable := range created {
-		createdSSTables[sstable.Level].Sstables = append(createdSSTables[sstable.Level].Sstables, sstable.Path)
-	}
+	createdSSTables[0].Sstables = append(createdSSTables[0].Sstables, newSSTable.Path)
+	// for _, sstable := range created {
+	// 	createdSSTables[sstable.Level].Sstables = append(createdSSTables[sstable.Level].Sstables, sstable.Path)
+	// }
 
-	for _, sstable := range deleted {
-		deletedSSTables[sstable.Level].Sstables = append(deletedSSTables[sstable.Level].Sstables, sstable.Path)
-	}
+	// for _, sstable := range deleted {
+	// 	deletedSSTables[sstable.Level].Sstables = append(deletedSSTables[sstable.Level].Sstables, sstable.Path)
+	// }
 
 	return &proto.CompactMemTableResponse{
 		CreatedSstables: createdSSTables,
