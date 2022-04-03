@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	pb "github.com/golang/protobuf/proto"
 	"github.com/yah01/CyberKV/common"
 	. "github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
 	etcdcli "go.etcd.io/etcd/client/v3"
 )
@@ -21,6 +23,7 @@ type VersionSet struct {
 
 func NewVersionSet(meta *etcdcli.Client) (*VersionSet, error) {
 	ctx := context.Background()
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 	resp, err := meta.Get(ctx, common.VersionSetKey)
 	if err != nil {
 		return nil, err
@@ -41,6 +44,7 @@ func NewVersionSet(meta *etcdcli.Client) (*VersionSet, error) {
 			Sstables:  nil,
 		}
 
+		log.Debug("save version...")
 		err = saveVersion(meta, version)
 		if err != nil {
 			return nil, err
@@ -50,6 +54,7 @@ func NewVersionSet(meta *etcdcli.Client) (*VersionSet, error) {
 			Current: version.VersionId,
 		}
 
+		log.Debug("save version set...")
 		saveVersionSet(meta, versionSet)
 		if err != nil {
 			return nil, err
