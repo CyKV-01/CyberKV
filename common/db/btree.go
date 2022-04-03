@@ -134,6 +134,7 @@ func (node *LeafNode[K, V]) Split() (BTreeNode[K, V], K) {
 	newLeaf.keys = append(newLeaf.keys, node.keys[mid:]...)
 	newLeaf.values = append(newLeaf.values, node.values[mid:]...)
 	newLeaf.SetParent(parent)
+	newLeaf.right = node.right
 
 	node.keys = node.keys[:mid]
 	node.values = node.values[:mid]
@@ -312,6 +313,11 @@ func (tree *BTree[K, V]) Fanout() int {
 }
 
 func (tree *BTree[K, V]) Range(fn func(key K, value V) bool) {
+	// leafNode := tree.root
+	// for leafNode.NodeType() != LeafNodeType {
+	// 	leafNode = leafNode.(*InternalNode[K, V]).children[0]
+	// }
+	// leaf := leafNode.(*LeafNode[K, V])
 	leaf := tree.leftmost
 	for leaf != nil {
 		leaf.RLock()

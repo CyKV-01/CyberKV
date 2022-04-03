@@ -22,7 +22,6 @@ func init() {
 	zap.ReplaceGlobals(logger)
 }
 
-
 func Debug(msg string, fields ...zapcore.Field) {
 	zap.L().Debug(msg, fields...)
 }

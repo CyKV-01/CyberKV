@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/db"
 	"github.com/yah01/CyberKV/common/log"
+	"github.com/yah01/CyberKV/common/wait"
 	"github.com/yah01/CyberKV/proto"
 	etcdcli "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
@@ -105,6 +107,141 @@ func (node *StorageNode) Start() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *proto.CompactMemTableRequest) (*proto.CompactMemTableResponse, error) {
+	slot := common.SlotID(request.Slot)
+	group := node.mem.Rotate(slot)
+	imm := group.Imm()
+
+	log.Info("ready to compact memtable as leader",
+		zap.Int32("slot", slot))
+
+	log.Info("create slot channel",
+		zap.Int32("slot", slot))
+	slotCh := node.compactor.PreCompact(slot)
+	ch := slotCh.CreateDataChan()
+
+	go func() {
+		imm.Range(func(key db.InternalKey, value string) bool {
+			ch <- &proto.KvData{
+				Key:       key.UserKey(),
+				Value:     value,
+				Timestamp: key.GetTimeStamp(),
+			}
+
+			return true
+		})
+
+		close(ch)
+	}()
+
+	// Wait for the other storage nodes to push their memtables.
+	isSatisfied := wait.WaitForCondition(10*time.Second, func() bool {
+		return slotCh.Len() >= common.DefaultReadQuorum
+	})
+
+	if !isSatisfied {
+		log.Error("failed to reach read quorum when compaction",
+			zap.Int32("slot", slot),
+			zap.Int("participantNumber", slotCh.Len()))
+	}
+
+	slotCh.Close()
+
+	mergeCh := node.compactor.MergeChan(slotCh, math.MaxUint64)
+
+	created, deleted, err := node.tableMgr.WriteSSTable(ctx, mergeCh, 0)
+	if err != nil {
+		log.Error("failed to write sstable",
+			zap.Int("level", 1),
+			zap.Error(err))
+		return nil, err
+	}
+
+	log.Info("compact done",
+		zap.Int32("slot", slot))
+
+	createdSSTables := make([]*proto.SSTableLevel, common.MaxLevel)
+	deletedSSTables := make([]*proto.SSTableLevel, common.MaxLevel)
+
+	for i := range createdSSTables {
+		createdSSTables[i] = &proto.SSTableLevel{
+			Level:    int32(i),
+			Sstables: make([]string, 0),
+		}
+		deletedSSTables[i] = &proto.SSTableLevel{
+			Level:    int32(i),
+			Sstables: make([]string, 0),
+		}
+	}
+
+	for _, sstable := range created {
+		createdSSTables[sstable.Level].Sstables = append(createdSSTables[sstable.Level].Sstables, sstable.Path)
+	}
+
+	for _, sstable := range deleted {
+		deletedSSTables[sstable.Level].Sstables = append(deletedSSTables[sstable.Level].Sstables, sstable.Path)
+	}
+
+	return &proto.CompactMemTableResponse{
+		CreatedSstables: createdSSTables,
+		DeletedSstables: deletedSSTables,
+	}, nil
+}
+
+func (node *StorageNode) CompactMemTableAsFollower(ctx context.Context, request *proto.CompactMemTableRequest) (*proto.CompactMemTableResponse, error) {
+	slot := common.SlotID(request.Slot)
+	group := node.mem.Rotate(slot)
+	imm := group.Imm()
+
+	log.Info("ready to compact memtable as follower",
+		zap.Int32("slot", slot))
+
+	data := make([]*proto.KvData, 0, 100)
+
+	begin := time.Now()
+	imm.Range(func(key db.InternalKey, value string) bool {
+		data = append(data, &proto.KvData{
+			Key:       key.UserKey(),
+			Value:     value,
+			Timestamp: key.GetTimeStamp(),
+		})
+
+		return true
+	})
+	end := time.Now()
+
+	log.Info("read imm done",
+		zap.Int32("slot", slot),
+		zap.Int("len", len(data)),
+		zap.Float64("seconds", end.Sub(begin).Seconds()))
+
+	req := proto.PushMemTableRequest{
+		Slot: request.Slot,
+		Data: data,
+	}
+
+	conn, err := grpc.Dial(request.LeaderAddr, grpc.WithInsecure())
+	if err != nil {
+		log.Error("failed to connect to leader",
+			zap.Int32("slot", slot),
+			zap.String("leader_addr", request.LeaderAddr),
+			zap.Error(err))
+		return nil, err
+	}
+	cli := proto.NewStorageClient(conn)
+
+	_, err = cli.PushMemTable(ctx, &req)
+	if err != nil {
+		log.Error("failed to push memtable to leader",
+			zap.Int32("slot", slot),
+			zap.String("leader_addr", request.LeaderAddr),
+			zap.Error(err))
+		return nil, err
+	}
+
+	return &proto.CompactMemTableResponse{}, nil
 }
 
 func (node *StorageNode) heartbeat() {

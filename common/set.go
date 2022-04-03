@@ -12,8 +12,10 @@ func NewConcurrentSet() *ConcurrentSet {
 	}
 }
 
-func (set *ConcurrentSet) Insert(elem any) {
-	set.set.Store(elem, struct{}{})
+// Return true if and only if the element already exists
+func (set *ConcurrentSet) Insert(elem any) bool {
+	_, ok := set.set.LoadOrStore(elem, struct{}{})
+	return ok
 }
 
 func (set *ConcurrentSet) Contain(elem any) bool {

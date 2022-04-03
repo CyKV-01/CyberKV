@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/log"
@@ -11,33 +12,27 @@ import (
 )
 
 type Compactor struct {
-	rwmutex               sync.RWMutex
-	activeMemTableCompact map[common.SlotID]struct{}
+	activeMemTableCompact *common.ConcurrentSet
 	versionSet            *VersionSet
 }
 
 func NewCompactor(versionSet *VersionSet) *Compactor {
 	return &Compactor{
-		rwmutex:               sync.RWMutex{},
-		activeMemTableCompact: make(map[common.SlotID]struct{}),
+		activeMemTableCompact: common.NewConcurrentSet(),
 		versionSet:            versionSet,
 	}
 }
 
 func (compactor *Compactor) CompactMemTable(slot common.SlotID, nodes []*StorageNode) {
-	compactor.rwmutex.RLock()
-	if _, ok := compactor.activeMemTableCompact[slot]; ok {
+	if compactor.activeMemTableCompact.Insert(slot) {
 		// The slot is compacting
-		compactor.rwmutex.RUnlock()
-		log.Info("the slot is already in compacting",
+		log.Debug("the slot is already in compacting",
 			zap.Int32("slot", slot))
 		return
 	}
-	compactor.rwmutex.RUnlock()
 
-	compactor.rwmutex.Lock()
-	compactor.activeMemTableCompact[slot] = struct{}{}
-	compactor.rwmutex.Unlock()
+	log.Info("start to compact slot",
+		zap.Int32("slot", slot))
 
 	ctx := context.Background()
 	leader := nodes[0]
@@ -52,7 +47,8 @@ func (compactor *Compactor) CompactMemTable(slot common.SlotID, nodes []*Storage
 		wg.Add(1)
 		go func(node *StorageNode) {
 			defer wg.Done()
-			resp, err := node.CompactMemTable(ctx, &req)
+			c, _ := context.WithTimeout(ctx, 60*time.Second)
+			resp, err := node.CompactMemTable(c, &req)
 			if err != nil {
 				log.Error("failed to request storage node to compact",
 					zap.String("node_id", node.info.Id),
@@ -61,7 +57,11 @@ func (compactor *Compactor) CompactMemTable(slot common.SlotID, nodes []*Storage
 			}
 
 			if node.info.Id == leader.info.Id {
-				_, err = compactor.versionSet.Edit(resp.CreatedSstables, resp.DeletedSstables)
+				log.Info("edit version set")
+				version, err := compactor.versionSet.Edit(resp.CreatedSstables, resp.DeletedSstables)
+				log.Info("edit version set done",
+					zap.Uint64("new version", version.VersionId))
+
 				if err != nil {
 					log.Error("failed to update version set",
 						zap.Error(err))
@@ -71,7 +71,7 @@ func (compactor *Compactor) CompactMemTable(slot common.SlotID, nodes []*Storage
 	}
 	wg.Wait()
 
-	compactor.rwmutex.Lock()
-	delete(compactor.activeMemTableCompact, slot)
-	compactor.rwmutex.Unlock()
+	log.Info("compaction done",
+		zap.Int32("slot", slot))
+	compactor.activeMemTableCompact.Delete(slot)
 }

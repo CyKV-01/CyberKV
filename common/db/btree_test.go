@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -74,4 +75,25 @@ func TestConcurrentBTree(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestBTreeRange(t *testing.T) {
+	tree := NewBTree[InternalKey, string](32)
+
+	cnt := 10000
+	maxTs := uint64(10)
+	for i := 0; i < cnt; i++ {
+		for ts := uint64(0); ts < maxTs; ts++ {
+			tree.Insert(NewInternalKey("key-"+strconv.Itoa(i), uint64(ts)), "value-"+strconv.Itoa(i))
+		}
+	}
+
+	readCount := 0
+	tree.Range(func(key InternalKey, value string) bool {
+		readCount++
+
+		return true
+	})
+
+	assert.Equal(t, cnt*int(maxTs), readCount)
 }
