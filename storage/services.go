@@ -32,13 +32,14 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 	var err error
 	mem, imm, fmem := tables[0], tables[1], tables[2]
 	internalKey := db.NewInternalKey(request.Key, request.Ts)
+
 	key, value, ok := mem.Find(internalKey)
-	if !ok && imm != nil {
+	if (!ok || internalKey.Compare(key) != 0) && imm != nil {
 		key, value, ok = imm.Find(internalKey)
-		if !ok && fmem != nil {
+		if (!ok || internalKey.Compare(key) != 0) && fmem != nil {
 			key, value, ok = fmem.Find(internalKey)
-			if !ok {
-				value, ok, err = node.tableMgr.Get(ctx, db.NewInternalKey(request.Key, request.Ts))
+			if !ok || internalKey.Compare(key) != 0 {
+				value, ok, err = node.tableMgr.Get(ctx, internalKey)
 				if err != nil {
 					return &proto.ReadResponse{
 						Status: &proto.Status{
