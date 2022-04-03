@@ -148,9 +148,6 @@ func (coord *Coordinator) ReportStats(ctx context.Context, request *proto.Report
 	maxSize := uint64(0)
 	for slot, size := range request.MemTableSize {
 		if size > common.WalCompactThreshold {
-			log.Info("schedule memtable compaction",
-				zap.Int32("slot", slot),
-				zap.Uint64("mem_table_size", size))
 			nodes := coord.storageCluster.GetNodesBySlot(slot)
 			if len(nodes) != coord.storageCluster.replicaNum {
 				log.Warn("the number of nodes will compact is not equal to the replica number",
@@ -164,7 +161,7 @@ func (coord *Coordinator) ReportStats(ctx context.Context, request *proto.Report
 		}
 	}
 
-	log.Info("receive report",
+	log.Debug("receive report",
 		zap.String("node_id", request.Id),
 		zap.Uint64("max_mem_table_size", maxSize))
 

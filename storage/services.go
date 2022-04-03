@@ -8,9 +8,9 @@ import (
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/db"
 	"github.com/yah01/CyberKV/common/log"
+	"github.com/yah01/CyberKV/common/wait"
 	"github.com/yah01/CyberKV/proto"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -100,95 +100,35 @@ func (node *StorageNode) Remove(ctx context.Context, request *proto.WriteRequest
 // Storage service
 // Coordinator to storage nodes
 func (node *StorageNode) CompactMemTable(ctx context.Context, request *proto.CompactMemTableRequest) (*proto.CompactMemTableResponse, error) {
-	slot := common.SlotID(request.Slot)
-	group := node.mem.Rotate(slot)
-	imm := group.Imm()
-
 	if request.Leader == node.Info.Id {
-		log.Info("ready to compact memtable as leader",
-			zap.Int32("slot", slot))
-
-		log.Info("create slot channel",
-			zap.Int32("slot", slot))
-		slotCh := node.compactor.PreCompact(slot)
-		ch := slotCh.AcquireChan()
-
-		go func() {
-			imm.Range(func(key db.InternalKey, value string) bool {
-				ch <- &proto.KvData{
-					Key:       key.UserKey(),
-					Value:     value,
-					Timestamp: key.GetTimeStamp(),
-				}
-
-				return true
-			})
-
-			close(ch)
-		}()
-
-		mergeCh := node.compactor.MergeChan(slotCh)
-		if len(mergeCh) == 0 {
-			log.Warn("merged channel is empty!")
-		}
-
-		err := node.tableMgr.WriteSSTable(ctx, mergeCh, 1)
-		if err != nil {
-			log.Error("failed to write sstable",
-				zap.Int("level", 1),
-				zap.Error(err))
-			return nil, err
-		}
-
-		log.Info("compact done")
+		return node.CompactMemTableAsLeader(ctx, request)
 	} else {
-		log.Info("ready to compact memtable as follower",
-			zap.Int32("slot", slot))
-
-		data := make([]*proto.KvData, 0, 100)
-		imm.Range(func(key db.InternalKey, value string) bool {
-			data = append(data, &proto.KvData{
-				Key:       key.UserKey(),
-				Value:     value,
-				Timestamp: key.GetTimeStamp(),
-			})
-
-			return true
-		})
-		req := proto.PushMemTableRequest{
-			Slot: request.Slot,
-			Data: data,
-		}
-
-		conn, err := grpc.Dial(request.LeaderAddr, grpc.WithInsecure())
-		if err != nil {
-			log.Error("failed to connect to leader",
-				zap.String("leader_addr", request.LeaderAddr),
-				zap.Error(err))
-			return nil, err
-		}
-		cli := proto.NewStorageClient(conn)
-
-		_, err = cli.PushMemTable(ctx, &req)
-		if err != nil {
-			log.Error("failed to push memtable to leader",
-				zap.String("leader_addr", request.LeaderAddr),
-				zap.Error(err))
-			return nil, err
-		}
+		return node.CompactMemTableAsFollower(ctx, request)
 	}
-
-	return &proto.CompactMemTableResponse{}, nil
 }
 
 // Storage nodes to leader storage node
 func (node *StorageNode) PushMemTable(ctx context.Context, request *proto.PushMemTableRequest) (*proto.PushMemTableResponse, error) {
-	slotCh := node.compactor.GetChan(request.Slot)
-	for slotCh == nil {
-		time.Sleep(time.Second)
+	var slotCh *SlotChan
+	ok := wait.WaitForCondition(10*time.Second, func() bool {
 		slotCh = node.compactor.GetChan(request.Slot)
+		return slotCh != nil
+	})
+
+	if !ok {
+		log.Error("failed to get slot channel",
+			zap.Int32("slot", request.Slot))
+		return &proto.PushMemTableResponse{}, nil
 	}
-	ch := slotCh.AcquireChan()
+
+	log.Info("compaction follower create data channel",
+		zap.Int32("slot", request.Slot))
+	ch := slotCh.CreateDataChan()
+	if ch == nil {
+		log.Info("no need for more follower for compaction",
+			zap.Int32("slot", request.Slot))
+		return &proto.PushMemTableResponse{}, nil
+	}
 
 	for _, data := range request.Data {
 		ch <- data

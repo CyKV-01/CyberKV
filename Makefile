@@ -6,7 +6,7 @@ build-coordinator:
 
 build-compute:
 	@echo "building compute-node..."
-	@cd compute && RUSTFLAGS=-Awarnings cargo build --bins
+	@cd compute && RUSTFLAGS=-Awarnings cargo build --bins --release
 
 build-storage:
 	@echo "building storage-node..."
@@ -21,6 +21,6 @@ clean-all: clean
 	@cd compute && cargo clean
 
 clean:
-	@rm cmd/storage-node/data/*/*.log -v -f
+	@rm cmd/storage-node/data/* -v -f -r
 	@etcdctl del "slots" --prefix
 	@etcdctl del "services" --prefix

@@ -20,6 +20,7 @@ func (kv *KvData) Len() uint64 {
 
 type SSTable struct {
 	data     []byte
+	Level    int
 	Path     string
 	FirstKey string
 	LastKey  string
@@ -27,9 +28,10 @@ type SSTable struct {
 	index *proto.Index
 }
 
-func NewSSTable(data []byte, path, firstKey, lastKey string, index *proto.Index) *SSTable {
+func NewSSTable(data []byte, level int, path, firstKey, lastKey string, index *proto.Index) *SSTable {
 	return &SSTable{
 		data:     data,
+		Level:    level,
 		Path:     path,
 		FirstKey: firstKey,
 		LastKey:  lastKey,
@@ -73,7 +75,7 @@ func NewSSTableFromDataCh(dataCh chan *proto.KvData) *SSTable {
 		}
 		blockSize += newOffset - oldOffset
 
-		if blockSize >= 1<<20 {
+		if blockSize >= common.SSTableBlockSize {
 			shouldDivideBlock = true
 		}
 	}
@@ -82,7 +84,7 @@ func NewSSTableFromDataCh(dataCh chan *proto.KvData) *SSTable {
 		return nil
 	}
 
-	return NewSSTable(sstableBytes, "", first.Key, last.Key, &index)
+	return NewSSTable(sstableBytes, 0, "", first.Key, last.Key, &index)
 }
 
 func (table *SSTable) Empty() bool {

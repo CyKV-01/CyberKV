@@ -1,3 +1,4 @@
+use dashmap::DashMap;
 use log::error;
 use tonic::{Request, Response, Status};
 
@@ -11,14 +12,14 @@ use crate::types::Value;
 use crate::{consts, util::*};
 
 pub struct KvServer {
-    mem_table: MemTable,
+    mem_table: DashMap<String, Value>,
     storage_layer: StorageLayer,
 }
 
 impl KvServer {
     pub fn new() -> Self {
         Self {
-            mem_table: MemTable::new(),
+            mem_table: DashMap::new(),
             storage_layer: StorageLayer::new(
                 consts::DEFAULT_REPLICA_NUM,
                 consts::DEFAULT_READ_QUORUM,
@@ -33,9 +34,9 @@ impl KeyValue for KvServer {
     async fn get(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
         let request = request.into_inner();
 
-        let response = match self.mem_table.get(&request.key).await {
+        let response = match self.mem_table.get(&request.key) {
             Some(value) => ReadResponse {
-                value: value.value,
+                value: value.value.clone(),
                 ts: value.timestamp,
                 status: None,
             },
@@ -48,7 +49,6 @@ impl KeyValue for KvServer {
     async fn set(&self, request: Request<WriteRequest>) -> Result<Response<WriteResponse>, Status> {
         let request = request.into_inner();
         let key = request.key.clone();
-        let value = Value::new(request.ts, request.value.clone());
 
         // write WAL
         let response = self.storage_layer.set(request).await?.into_inner();
@@ -63,20 +63,10 @@ impl KeyValue for KvServer {
         }
 
         // write memtable
-        let status = match self.mem_table.set(key, value).await {
-            Ok(_) => build_status(ErrorCode::Ok, ""),
-            Err(err) => err,
-        };
-
-        if status.err_code != ErrorCode::Ok as i32 {
-            error!(
-                "failed to write mem_table, code={}, msg={}",
-                status.err_code, status.err_message
-            );
-        }
+        self.mem_table.remove(&key);
 
         Ok(Response::new(WriteResponse {
-            status: Some(status),
+            status: Some(build_status(ErrorCode::Ok, "")),
         }))
     }
 
@@ -86,13 +76,10 @@ impl KeyValue for KvServer {
     ) -> Result<Response<WriteResponse>, Status> {
         let request = request.into_inner();
 
-        let response = match self.mem_table.remove(&request.key).await {
-            Ok(_) => WriteResponse {
-                status: Some(build_status(ErrorCode::Ok, "")),
-            },
-            Err(err) => WriteResponse { status: Some(err) },
-        };
+        self.mem_table.remove(&request.key);
 
-        Ok(Response::new(response))
+        Ok(Response::new(WriteResponse {
+            status: Some(build_status(ErrorCode::Ok, "")),
+        }))
     }
 }

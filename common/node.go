@@ -55,10 +55,10 @@ func (node *BaseComponent) Register(name string) {
 	go func() {
 		for {
 			select {
-			case resp := <-keepAliveStream:
-				log.Debug("etcd keep alive response",
-					zap.Int64("id", int64(resp.ID)),
-					zap.Int64("ttl", resp.TTL))
+			case <-keepAliveStream:
+				// log.Debug("etcd keep alive response",
+				// 	zap.Int64("id", int64(resp.ID)),
+				// 	zap.Int64("ttl", resp.TTL))
 			case <-keepAliveCtx.Done():
 				log.Infof("etcd keep alive canceled",
 					zap.String("nodeId", node.Info.Id))

@@ -80,7 +80,7 @@ func (mgr *TableManager) Get(ctx context.Context, key db.InternalKey) (value str
 				return
 			}
 
-			sstable := db.NewSSTable(sstableData, objectInfo.Key, objectInfo.UserMetadata["first"], objectInfo.UserMetadata["last"], &index)
+			sstable := db.NewSSTable(sstableData, level, objectInfo.Key, objectInfo.UserMetadata["first"], objectInfo.UserMetadata["last"], &index)
 
 			value, ok = sstable.Get(key.UserKey(), key.GetTimeStamp())
 			if ok {
@@ -94,20 +94,30 @@ func (mgr *TableManager) Get(ctx context.Context, key db.InternalKey) (value str
 
 // Write SSTable to object storage
 // This will remove all overlapping SSTables
-func (mgr *TableManager) WriteSSTable(ctx context.Context, dataCh chan *proto.KvData, level int) error {
+func (mgr *TableManager) WriteSSTable(ctx context.Context, dataCh chan *proto.KvData, level int) ([]*db.SSTable, []*db.SSTable, error) {
+	log.Debug("create sstable from merged data channel")
 	sstable := db.NewSSTableFromDataCh(dataCh)
 	if sstable.Empty() {
-		log.Info("data is empty, don't write")
-		return nil
+		log.Warn("data is empty, don't write")
+		return nil, nil, nil
 	}
 
 	overlapTables := mgr.GetOverlapTables(ctx, sstable.FirstKey, sstable.LastKey, level)
+
 	mergedDataCh := mgr.MergeSSTables(sstable, overlapTables)
 
 	log.Info("generate new sstable...")
 	newSSTable := db.NewSSTableFromDataCh(mergedDataCh)
 
-	return mgr.writeSSTable(ctx, newSSTable, level)
+	err := mgr.writeSSTable(ctx, newSSTable, level)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	createdSSTables := make([]*db.SSTable, 0, 1)
+	createdSSTables = append(createdSSTables, newSSTable)
+
+	return createdSSTables, overlapTables, nil
 }
 
 // Write directly the SSTable into object storage
@@ -122,6 +132,7 @@ func (mgr *TableManager) writeSSTable(ctx context.Context, sstable *db.SSTable, 
 		return err
 	}
 
+	sstable.Level = level
 	sstable.Path = common.SSTableDataPath(level, idResp.Id)
 	_, err = mgr.store.PutObject(ctx, mgr.bucketName, sstable.Path,
 		bytes.NewReader(sstable.GetData()), int64(sstable.Len()), minio.PutObjectOptions{
@@ -220,7 +231,12 @@ func (mgr *TableManager) GetOverlapTables(ctx context.Context, firstKey, lastKey
 		}
 
 		sstables = append(sstables,
-			db.NewSSTable(nil, object.Key, object.UserMetadata["first"], object.UserMetadata["last"], nil))
+			db.NewSSTable(nil, level, object.Key, object.UserMetadata["first"], object.UserMetadata["last"], nil))
+
+		log.Debug("overlap sstable for given key range",
+			zap.String("firstKey", firstKey),
+			zap.String("lastKey", lastKey),
+			zap.String("sstable", object.Key))
 	}
 
 	sort.Slice(sstables, func(i, j int) bool {

@@ -110,6 +110,8 @@ func (table *SlotMemTable[K, V]) Rotate(slot SlotID) *MemTableGroup[K, V] {
 
 	table.mem[slot] = &newGroup
 
+	table.memSize = make(map[int32]uint64)
+
 	return &newGroup
 }
 
