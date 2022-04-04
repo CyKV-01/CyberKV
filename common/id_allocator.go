@@ -23,6 +23,14 @@ type MetaIdAllocator struct {
 	batchSize uint64
 }
 
+func InitMetaAllocator(meta *etcdcli.Client, key string) {
+	var err error
+	GlobalMetaIdAllocator, err = NewMetaIdAllocator(context.Background(), meta, key, 100)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func NewMetaIdAllocator(ctx context.Context, meta *etcdcli.Client, key string, batchSize uint64) (*MetaIdAllocator, error) {
 	resp, err := meta.Get(ctx, key)
 	if err != nil {
@@ -95,5 +103,10 @@ func (allocator *MetaIdAllocator) Next() (uint64, error) {
 var (
 	Sonyflake = sonyflake.NewSonyflake(sonyflake.Settings{
 		StartTime: time.Now(),
+		MachineID: func() (uint16, error) {
+			return uint16(time.Now().Nanosecond() % 10007), nil
+		},
 	})
+
+	GlobalMetaIdAllocator *MetaIdAllocator
 )

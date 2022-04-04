@@ -109,7 +109,7 @@ func (mgr *TableManager) WriteSSTable(ctx context.Context, dataCh chan *proto.Kv
 	log.Info("generate new sstable...")
 	newSSTable := db.NewSSTableFromDataCh(mergedDataCh)
 
-	err := mgr.writeSSTable(ctx, newSSTable, level)
+	err := mgr.WriteLevel0SSTable(ctx, newSSTable, level)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -121,7 +121,7 @@ func (mgr *TableManager) WriteSSTable(ctx context.Context, dataCh chan *proto.Kv
 }
 
 // Write directly the SSTable into object storage
-func (mgr *TableManager) writeSSTable(ctx context.Context, sstable *db.SSTable, level int) error {
+func (mgr *TableManager) WriteLevel0SSTable(ctx context.Context, sstable *db.SSTable, level int) error {
 	log.Info("write sstable into object storage...",
 		zap.Int("size", sstable.Len()),
 		zap.String("firstKey", sstable.FirstKey),

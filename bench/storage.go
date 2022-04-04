@@ -24,6 +24,7 @@ func main() {
 
 	keyCount := 10000
 	cnt := 10000
+	outputGap := 1000
 
 	keys := make([]string, keyCount)
 	values := make([]string, cnt)
@@ -44,12 +45,12 @@ func main() {
 
 			begin := time.Now()
 			for i := 0; i < cnt; i++ {
-				if i%100 == 0 {
+				if i > 0 && i%outputGap == 0 {
 					end := time.Now()
 					msg := fmt.Sprintf("writing data... progress: %d/%d", i, cnt)
 					log.Info(msg,
 						zap.Int("goroutine", idx),
-						zap.Float64("TPS", 100/end.Sub(begin).Seconds()))
+						zap.Float64("TPS", float64(outputGap)/end.Sub(begin).Seconds()))
 					begin = end
 				}
 
@@ -70,6 +71,11 @@ func main() {
 						zap.Error(err))
 				}
 			}
+			end := time.Now()
+			msg := fmt.Sprintf("writing data... progress: %d/%d", cnt, cnt)
+			log.Info(msg,
+				zap.Int("goroutine", idx),
+				zap.Float64("TPS", float64(outputGap)/end.Sub(begin).Seconds()))
 		}(c)
 	}
 	wg.Wait()
@@ -85,12 +91,12 @@ func main() {
 
 			begin := time.Now()
 			for i := 0; i < cnt; i++ {
-				if i%100 == 0 {
+				if i > 0 && i%outputGap == 0 {
 					end := time.Now()
 					msg := fmt.Sprintf("reading data... progress: %d/%d", i, cnt)
 					log.Info(msg,
 						zap.Int("goroutine", idx),
-						zap.Float64("QPS", 100/end.Sub(begin).Seconds()))
+						zap.Float64("QPS", float64(outputGap)/end.Sub(begin).Seconds()))
 					begin = end
 				}
 
@@ -109,6 +115,11 @@ func main() {
 						zap.Error(err))
 				}
 			}
+			end := time.Now()
+			msg := fmt.Sprintf("reading data... progress: %d/%d", cnt, cnt)
+			log.Info(msg,
+				zap.Int("goroutine", idx),
+				zap.Float64("QPS", float64(outputGap)/end.Sub(begin).Seconds()))
 		}(c)
 	}
 	wg.Wait()
