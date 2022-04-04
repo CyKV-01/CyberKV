@@ -22,5 +22,6 @@ clean-all: clean
 
 clean:
 	@rm cmd/storage-node/data/* -v -f -r
+	@rm tmp/* -v -f -r
 	@etcdctl del "slots" --prefix
 	@etcdctl del "services" --prefix

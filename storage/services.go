@@ -34,11 +34,13 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 	internalKey := db.NewInternalKey(request.Key, request.Ts)
 
 	key, value, ok := mem.Find(internalKey)
-	if (!ok || internalKey.Compare(key) != 0) && imm != nil {
+	if (!ok || key.UserKey() != request.Key) && imm != nil {
 		key, value, ok = imm.Find(internalKey)
-		if (!ok || internalKey.Compare(key) != 0) && fmem != nil {
+		if (!ok || key.UserKey() != request.Key) && fmem != nil {
 			key, value, ok = fmem.Find(internalKey)
-			if !ok || internalKey.Compare(key) != 0 {
+			if !ok || key.UserKey() != request.Key {
+				log.Info("key not found in memtables, will try to read it from sstables",
+					zap.String("key", request.Key))
 				value, ok, err = node.tableMgr.Get(ctx, internalKey)
 				if err != nil {
 					return &proto.ReadResponse{

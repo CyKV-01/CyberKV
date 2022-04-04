@@ -4,7 +4,7 @@
 //     StorageNode = 2;
 // }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct NodeInfo {
     #[prost(uint64, tag = "1")]
     pub id: u64,

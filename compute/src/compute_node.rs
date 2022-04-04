@@ -56,10 +56,11 @@ impl ComputeNode {
         });
 
         info!("register...");
+        let info = serde_json::to_string(&self.info).unwrap();
         self.meta
             .put(
                 format!("{}/{}", COMPUTE_SERVICE_PREFIX, self.info.id),
-                self.info.addr.as_str(),
+                info,
                 Some(PutOptions::new().with_lease(lease.id())),
             )
             .await?;

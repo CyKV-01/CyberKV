@@ -76,8 +76,8 @@ func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) 
 	storageNodes := coord.storageCluster.GetNodesBySlot(slot)
 	if len(storageNodes) == 0 {
 		log.Warn("no enough storage node to serve",
-			zap.Int("nodesNum", len(nodes)),
-			zap.Int("writeQuorum", coord.computeCluster.writeQuorum))
+			zap.Int("nodesNum", len(storageNodes)),
+			zap.Int("writeQuorum", coord.storageCluster.writeQuorum))
 		return &proto.WriteResponse{
 			Status: &proto.Status{
 				ErrCode:    proto.ErrorCode_RetryLater,

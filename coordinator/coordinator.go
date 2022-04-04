@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -182,15 +181,12 @@ func (coord *Coordinator) watchCluster() {
 
 func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 	var nodeInfo VersionedNodeInfo
-	id, err := strconv.ParseUint(string(kv.Key), 10, 64)
+	err := json.Unmarshal(kv.Value, &nodeInfo)
 	if err != nil {
-		log.Error("failed to parse event key",
-			zap.String("key", string(kv.Key)),
+		log.Error("failed to unmarshal node info",
 			zap.Error(err))
-		panic(err)
+		return
 	}
-	nodeInfo.Id = id
-	nodeInfo.Addr = string(kv.Value)
 	nodeInfo.Version = kv.CreateRevision
 
 	if bytes.Contains(kv.Key, []byte("compute")) {
@@ -205,13 +201,6 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 		}
 		coord.computeCluster.AddNode(node)
 	} else if bytes.Contains(kv.Key, []byte("storage")) {
-		err := json.Unmarshal(kv.Value, &nodeInfo)
-		if err != nil {
-			log.Error("failed to unmarshal storage node info",
-				zap.Error(err))
-			return
-		}
-
 		log.Info("add new storage node",
 			zap.Uint64("id", nodeInfo.Id),
 			zap.String("addr", nodeInfo.Addr))

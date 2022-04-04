@@ -1,7 +1,7 @@
 package common
 
 const (
-	WalCompactThreshold  = 4 * 1024 * 100
+	WalCompactThreshold  = 4 * 1024 * 200
 	MaxMemTableTotalSize = 32 * 1024 * 1024
 	SSTableBlockSize     = 4 * 1024
 

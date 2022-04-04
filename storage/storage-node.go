@@ -155,7 +155,7 @@ func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *p
 	mergeCh := node.compactor.MergeChan(slotCh, math.MaxUint64)
 
 	newSSTable := db.NewSSTableFromDataCh(mergeCh)
-	err := node.tableMgr.writeSSTable(ctx, newSSTable, 0)
+	err := node.tableMgr.WriteLevel0SSTable(ctx, newSSTable, 0)
 	// created, deleted, err := node.tableMgr.WriteSSTable(ctx, mergeCh, 0)
 	if err != nil {
 		log.Error("failed to write sstable",
