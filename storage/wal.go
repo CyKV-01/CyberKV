@@ -21,9 +21,10 @@ type LogWriter struct {
 	file *os.File
 }
 
-func NewLogWriter(slot common.SlotID, nodeID string) *LogWriter {
+func NewLogWriter(slot common.SlotID, nodeID common.NodeID) *LogWriter {
 	id := common.GenerateUniqueId()
-	logPath := common.LogPath(slot, nodeID, id)
+	nodeIdStr := strconv.FormatUint(nodeID, 10)
+	logPath := common.LogPath(slot, nodeIdStr, id)
 
 	err := os.MkdirAll(path.Dir(logPath), 0777)
 	if err != nil {

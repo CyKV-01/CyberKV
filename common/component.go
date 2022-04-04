@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"os"
 	"path"
+	"strconv"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
 	etcdcli "go.etcd.io/etcd/client/v3"
@@ -26,8 +26,13 @@ type BaseComponent struct {
 }
 
 func NewBaseComponent(addr string, etcd *etcdcli.Client) *BaseComponent {
+	id, err := Sonyflake.NextID()
+	if err != nil {
+		panic(err)
+	}
+
 	info := &proto.NodeInfo{
-		Id:   uuid.NewString(),
+		Id:   id,
 		Addr: addr,
 	}
 
@@ -65,7 +70,7 @@ func (node *BaseComponent) Register(name string) {
 				// 	zap.Int64("ttl", resp.TTL))
 			case <-keepAliveCtx.Done():
 				log.Infof("etcd keep alive canceled",
-					zap.String("nodeId", node.Info.Id))
+					zap.Uint64("nodeId", node.Info.Id))
 				return
 			}
 		}
@@ -79,9 +84,10 @@ func (node *BaseComponent) Register(name string) {
 
 	log.Info("register",
 		zap.String("node", name),
-		zap.String("id", node.Info.Id),
+		zap.Uint64("id", node.Info.Id),
 		zap.String("addr", node.Info.Addr))
-	_, err = node.Meta.Put(ctx, path.Join(ServicePrefix, name, node.Info.Id), string(infoBytes),
+	_, err = node.Meta.Put(ctx, path.Join(ServicePrefix, name, strconv.FormatUint(node.Info.Id, 10)),
+		string(infoBytes),
 		etcdcli.WithLease(resp.ID))
 	if err != nil {
 		log.Errorf("failed to register, err=%v", err)

@@ -85,6 +85,7 @@ func main() {
 
 			listenAddr := fmt.Sprintf("%v:%v", ctx.String("ip"), ctx.Int("port"))
 			storageNode := storage.NewStorageNode(listenAddr, etcdClient, minioClient)
+			storageNode.Recovery()
 			storageNode.Register("storage")
 			storageNode.Start()
 
