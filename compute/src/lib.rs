@@ -11,3 +11,4 @@ mod types;
 mod util;
 mod consts;
 mod conn_pool;
+mod id_generator;
