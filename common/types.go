@@ -2,7 +2,7 @@ package common
 
 type (
 	SlotID    = int32
-	NodeID    = string
+	NodeID    = uint64
 	TimeStamp = uint64
 	UniqueID  = uint64
 

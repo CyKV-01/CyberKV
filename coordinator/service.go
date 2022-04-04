@@ -162,7 +162,7 @@ func (coord *Coordinator) ReportStats(ctx context.Context, request *proto.Report
 	}
 
 	log.Debug("receive report",
-		zap.String("node_id", request.Id),
+		zap.Uint64("node_id", request.Id),
 		zap.Uint64("max_mem_table_size", maxSize))
 
 	return &proto.ReportStatsResponse{}, nil

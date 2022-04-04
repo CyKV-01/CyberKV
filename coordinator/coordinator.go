@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -55,7 +56,7 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		panic(err)
 	}
 
-	return &Coordinator{
+	coord := &Coordinator{
 		BaseComponent:  common.NewBaseComponent(addr, etcdClient),
 		computeCluster: NewCluster[*ComputeNode](etcdClient, 1, 1, 1),
 		storageCluster: NewCluster[*StorageNode](etcdClient, replicaNum, readQuorum, writeQuorum),
@@ -65,13 +66,14 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		versionSet:         versionSet,
 		sstableIdAllocator: allocator,
 	}
+
+	coord.watchCluster()
+
+	return coord
 }
 
 func (coord *Coordinator) Start() {
 	log.Info("coordinator starting...")
-
-	coord.watchCluster()
-	coord.Recovery()
 
 	go coord.computeCluster.AssignSlotsBackground()
 	go coord.storageCluster.AssignSlotsBackground()
@@ -93,6 +95,7 @@ func (coord *Coordinator) Start() {
 }
 
 func (coord *Coordinator) Recovery() {
+	log.Info("coordinator recovery...")
 	// Recovery service info
 	resp, err := coord.Meta.Get(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
 	if err != nil {
@@ -146,7 +149,7 @@ func (coord *Coordinator) recoverySlotInfo() {
 		if slotInfo, ok = computeSlots[common.SlotID(slot)]; !ok {
 			slotInfo = &proto.SlotInfo{
 				Slot:  slot,
-				Nodes: make(map[string]*proto.NodeInfo),
+				Nodes: make(map[common.NodeID]*proto.NodeInfo),
 			}
 		}
 		coord.computeCluster.RecoverySlotInfo(slotInfo)
@@ -154,7 +157,7 @@ func (coord *Coordinator) recoverySlotInfo() {
 		if slotInfo, ok = storageSlots[common.SlotID(slot)]; !ok {
 			slotInfo = &proto.SlotInfo{
 				Slot:  slot,
-				Nodes: make(map[string]*proto.NodeInfo),
+				Nodes: make(map[common.NodeID]*proto.NodeInfo),
 			}
 		}
 		coord.storageCluster.RecoverySlotInfo(slotInfo)
@@ -179,13 +182,20 @@ func (coord *Coordinator) watchCluster() {
 
 func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 	var nodeInfo VersionedNodeInfo
-	nodeInfo.Id = string(kv.Key)
+	id, err := strconv.ParseUint(string(kv.Key), 10, 64)
+	if err != nil {
+		log.Error("failed to parse event key",
+			zap.String("key", string(kv.Key)),
+			zap.Error(err))
+		panic(err)
+	}
+	nodeInfo.Id = id
 	nodeInfo.Addr = string(kv.Value)
 	nodeInfo.Version = kv.CreateRevision
 
 	if bytes.Contains(kv.Key, []byte("compute")) {
 		log.Info("add new compute node",
-			zap.String("id", nodeInfo.Id),
+			zap.Uint64("id", nodeInfo.Id),
 			zap.String("addr", nodeInfo.Addr))
 
 		node, err := NewComputeNode(&nodeInfo)
@@ -203,7 +213,7 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 		}
 
 		log.Info("add new storage node",
-			zap.String("id", nodeInfo.Id),
+			zap.Uint64("id", nodeInfo.Id),
 			zap.String("addr", nodeInfo.Addr))
 
 		node, err := NewStorageNode(&nodeInfo)

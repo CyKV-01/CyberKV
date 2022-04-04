@@ -51,7 +51,7 @@ func (compactor *Compactor) CompactMemTable(slot common.SlotID, nodes []*Storage
 			resp, err := node.CompactMemTable(c, &req)
 			if err != nil {
 				log.Error("failed to request storage node to compact",
-					zap.String("node_id", node.info.Id),
+					zap.Uint64("node_id", node.info.Id),
 					zap.Error(err))
 				return
 			}

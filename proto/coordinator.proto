@@ -17,7 +17,7 @@ message AllocateSSTableResponse {
 }
 
 message ReportStatsRequest {
-    string id = 1;
+    uint64 id = 1;
     map<int32,uint64> mem_table_size = 2;   // slot_id -> mem_table_size
     uint64 memory_usage = 3;
     uint64 memory_cap = 4;

@@ -7,5 +7,5 @@ import "node.proto";
 
 message SlotInfo {
     int32 slot = 1;
-    map<string, node.NodeInfo> nodes = 2;
+    map<uint64, node.NodeInfo> nodes = 2;
 }

@@ -65,7 +65,7 @@ func NewCluster[T Node](meta *etcdcli.Client, replicaNum, readQuorum, writeQuoru
 		slot := common.SlotID(i)
 		cluster.slots[slot] = &proto.SlotInfo{
 			Slot:  slot,
-			Nodes: make(map[string]*proto.NodeInfo, replicaNum),
+			Nodes: make(map[common.NodeID]*proto.NodeInfo, replicaNum),
 		}
 	}
 
@@ -101,7 +101,7 @@ func (cluster *Cluster[T]) RecoverySlotInfo(slotInfo *proto.SlotInfo) {
 		recoveredNodes = append(recoveredNodes, info)
 	}
 
-	slotInfo.Nodes = make(map[string]*proto.NodeInfo, len(recoveredNodes))
+	slotInfo.Nodes = make(map[common.NodeID]*proto.NodeInfo, len(recoveredNodes))
 	for _, node := range recoveredNodes {
 		slotInfo.Nodes[node.Id] = node
 	}
@@ -135,7 +135,7 @@ func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) error {
 			old := cluster.GetSlotInfo(slot)
 			newInfo = &proto.SlotInfo{
 				Slot:  slot,
-				Nodes: make(map[string]*proto.NodeInfo, len(old.Nodes)),
+				Nodes: make(map[common.NodeID]*proto.NodeInfo, len(old.Nodes)),
 			}
 			for id, info := range old.Nodes {
 				newInfo.Nodes[id] = info
@@ -183,7 +183,7 @@ func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) error {
 			}
 
 			if len(succeedNodes) != len(info.Nodes) {
-				info.Nodes = make(map[string]*proto.NodeInfo, len(succeedNodes))
+				info.Nodes = make(map[common.NodeID]*proto.NodeInfo, len(succeedNodes))
 				for _, nodeInfo := range succeedNodes {
 					info.Nodes[nodeInfo.Id] = nodeInfo
 				}

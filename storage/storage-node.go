@@ -109,6 +109,9 @@ func (node *StorageNode) Start() {
 	}
 }
 
+func (node *StorageNode) Recovery() {
+}
+
 func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *proto.CompactMemTableRequest) (*proto.CompactMemTableResponse, error) {
 	slot := common.SlotID(request.Slot)
 	group := node.mem.Rotate(slot)

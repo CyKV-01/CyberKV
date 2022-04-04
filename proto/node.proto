@@ -10,7 +10,7 @@ option go_package = "github.com/CyKV-01/CyberKV/proto";
 // }
 
 message NodeInfo {
-    string id = 1;
+    uint64 id = 1;
     // NodeType type = 2;
     string addr = 2;
 }

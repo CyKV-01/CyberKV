@@ -30,7 +30,7 @@ message Index {
 }
 
 message CompactMemTableRequest {
-    string leader = 1;
+    uint64 leader = 1;
     string leader_addr = 2;
     int32 slot = 3;
     uint64 timestamp = 4;
