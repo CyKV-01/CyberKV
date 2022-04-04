@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -181,6 +182,7 @@ func (coord *Coordinator) watchCluster() {
 
 func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 	var nodeInfo VersionedNodeInfo
+
 	err := json.Unmarshal(kv.Value, &nodeInfo)
 	if err != nil {
 		log.Error("failed to unmarshal node info",
