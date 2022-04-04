@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"encoding/json"
+	"io/ioutil"
 	"os"
 	"path"
 	"strconv"
@@ -45,6 +46,22 @@ func NewBaseComponent(addr string, etcd *etcdcli.Client) *BaseComponent {
 func (node *BaseComponent) Register(name string) {
 	ctx := context.Background()
 	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
+
+	// Check existed NodeInfo
+	nodeInfoBytes, err := ioutil.ReadFile("component.json")
+	hasComponentInfo := false
+	if err != nil {
+		log.Warn("failed to read component infomation from disk",
+			zap.Error(err))
+	} else {
+		err = json.Unmarshal(nodeInfoBytes, node.Info)
+		if err != nil {
+			log.Warn("failed to deserialize component infomation",
+				zap.Error(err))
+		} else {
+			hasComponentInfo = true
+		}
+	}
 
 	log.Info("register...",
 		zap.String("name", name))
@@ -94,18 +111,20 @@ func (node *BaseComponent) Register(name string) {
 		panic(err)
 	}
 
-	file, err := os.Create("component.json")
-	if err != nil {
-		panic(err)
-	}
+	if !hasComponentInfo {
+		file, err := os.Create("component.json")
+		if err != nil {
+			panic(err)
+		}
 
-	_, err = file.Write(infoBytes)
-	if err != nil {
-		panic(err)
-	}
+		_, err = file.Write(infoBytes)
+		if err != nil {
+			panic(err)
+		}
 
-	err = file.Close()
-	if err != nil {
-		panic(err)
+		err = file.Close()
+		if err != nil {
+			panic(err)
+		}
 	}
 }

@@ -7,8 +7,8 @@ pub struct AllocateSsTableResponse {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ReportStatsRequest {
-    #[prost(string, tag = "1")]
-    pub id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "1")]
+    pub id: u64,
     /// slot_id -> mem_table_size
     #[prost(map = "int32, uint64", tag = "2")]
     pub mem_table_size: ::std::collections::HashMap<i32, u64>,

@@ -1,8 +1,3 @@
-use crc::{Algorithm, Crc};
-use futures::future::Select;
-
-use crate::proto::status;
-
 pub type SlotID = u16;
 pub type TimeStamp = u64;
 

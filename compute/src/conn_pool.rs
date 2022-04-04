@@ -1,13 +1,13 @@
 use crate::error::Result;
 use crate::proto::kvs::key_value_client::KeyValueClient;
 use crate::proto::node::NodeInfo;
-use crate::storage::{StorageLayer, StorageNode};
+use crate::storage::{StorageNode};
 use dashmap::DashMap;
 use tonic::transport::Channel;
 
 #[derive(Debug)]
 pub struct ConnCache {
-    cache: DashMap<String, StorageNode>,
+    cache: DashMap<u64, StorageNode>,
 }
 
 impl ConnCache {
@@ -17,15 +17,15 @@ impl ConnCache {
         }
     }
 
-    pub fn get(&self, node_id: &str) -> Option<KeyValueClient<Channel>> {
-        match self.cache.get(node_id) {
+    pub fn get(&self, node_id: u64) -> Option<KeyValueClient<Channel>> {
+        match self.cache.get(&node_id) {
             Some(entry) => Some(entry.value().get_client()),
             None => None,
         }
     }
 
     pub async fn get_or_insert(&self, info: &NodeInfo) -> Result<KeyValueClient<Channel>> {
-        match self.get(&info.id) {
+        match self.get(info.id) {
             Some(client) => Ok(client),
             None => self.insert(info.clone()).await,
         }

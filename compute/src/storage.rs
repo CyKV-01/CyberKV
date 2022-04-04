@@ -1,24 +1,20 @@
-use dashmap::DashMap;
 use futures::future::join_all;
-use log::{error, info};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::sync::Arc;
+use log::error;
+
 use std::time::Duration;
-use tokio::sync::RwLock;
+
 use tonic::transport::Channel;
 use tonic::{Response, Status};
 
 use crate::conn_pool::ConnCache;
 use crate::proto::kvs::{ReadRequest, WriteRequest, WriteResponse};
 use crate::proto::node::NodeInfo;
-use crate::types::Value;
+
 use crate::{
     proto::{
         kvs::{key_value_client::*, ReadResponse},
         status::ErrorCode,
     },
-    types::SlotID,
     util::*,
 };
 
@@ -54,7 +50,7 @@ impl StorageNode {
 
     pub async fn remove(
         &mut self,
-        request: WriteRequest,
+        _request: WriteRequest,
     ) -> Result<Response<WriteResponse>, Status> {
         todo!()
     }
@@ -79,62 +75,6 @@ impl StorageLayer {
     }
 
     pub async fn get(&self, request: ReadRequest) -> Result<Response<ReadResponse>, Status> {
-        // let slot = calc_slot(&request.key);
-        // let slot_node_index = self.slot_node_index.read().await;
-        // let nodes = slot_node_index.get(&slot);
-
-        // if nodes.is_none() {
-        //     return Err(Status::failed_precondition("no storage node to serve"));
-        // }
-
-        // let nodes = nodes.unwrap();
-
-        // if nodes.len() < self.read_quorum {
-        //     return Err(Status::failed_precondition("no enough storage node"));
-        // }
-
-        // let mut read_results = Vec::with_capacity(nodes.len());
-        // for node in nodes {
-        //     read_results.push(node.get(request.clone()));
-        // }
-
-        // // TODO: wait until reaching read quorum
-        // let results = join_all(read_results).await;
-
-        // let mut read_counts = 0;
-        // let mut value = Value {
-        //     timestamp: 0,
-        //     value: String::new(),
-        // };
-        // for result in results {
-        //     if let Ok(result) = result {
-        //         let respones = result.into_inner();
-        //         if respones.ts > value.timestamp {
-        //             value.timestamp = respones.ts;
-        //             value.value = respones.value;
-        //         }
-
-        //         read_counts += 1;
-        //         if read_counts >= self.read_quorum {
-        //             break;
-        //         }
-        //     } else {
-        //         continue;
-        //     }
-        // }
-
-        // if read_counts < self.read_quorum {
-        //     return Err(Status::failed_precondition(
-        //         "no enough storage node to reach read quorum",
-        //     ));
-        // }
-
-        // return Ok(Response::new(ReadResponse {
-        //     value: value.value,
-        //     ts: value.timestamp,
-        //     status: None,
-        // }));
-
         let mut nodes = Vec::with_capacity(request.info.len());
         for info in &request.info {
             match self.conn_cache.get_or_insert(info).await {
@@ -255,7 +195,7 @@ impl StorageLayer {
         }));
     }
 
-    pub async fn remove(&self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
+    pub async fn remove(&self, _request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
         todo!()
     }
 }

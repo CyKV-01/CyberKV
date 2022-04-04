@@ -1,21 +1,15 @@
 use core::time;
-use std::io::Read;
-use std::path;
 
-use crate::concurrent_map::{ConcurrentMap, MemTable};
-// use crate::error::Result;
 use crate::error::Result;
-use crate::proto::kvs::key_value_client::*;
-use crate::proto::kvs::{key_value_server::*, *};
+use crate::id_generator::next_id;
+use crate::proto::kvs::key_value_server::*;
 use crate::proto::node::*;
-use crate::proto::status::{self, ErrorCode};
-use crate::service::{self, KvServer};
-use crate::util::*;
-use crate::types::Value;
-use etcd_client::{LeaseGrantOptions, PutOptions};
-use log::{debug, error, info, trace, warn};
-use tonic::codegen::http::header::SERVER;
-use tonic::{transport::Server, Request, Response, Status};
+use crate::service::KvServer;
+
+use etcd_client::PutOptions;
+use log::{debug, info};
+
+use tonic::transport::Server;
 
 const SERVICE_PREFIX: &str = "services";
 const COMPUTE_SERVICE_PREFIX: &str = "services/compute";
@@ -33,7 +27,7 @@ impl ComputeNode {
     pub fn new(meta: etcd_client::Client, addr: String) -> Self {
         Self {
             info: NodeInfo {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: next_id(),
                 addr: addr,
             },
             meta: meta,
