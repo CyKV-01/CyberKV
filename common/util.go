@@ -13,11 +13,26 @@ import (
 
 const DataDir = "data"
 
-func LogName(slot SlotID, id int64) string {
+func LogName(slot SlotID, id UniqueID) string {
 	return fmt.Sprintf("%v_%v.log", slot, id)
 }
 
-func LogPath(slot SlotID, nodeID string, id int64) string {
+func ParseLogName(name string) (SlotID, UniqueID) {
+	name = strings.TrimSuffix(name, ".log")
+	parts := strings.Split(name, "_")
+	slotID, err := strconv.Atoi(parts[0])
+	if err != nil {
+		panic(err)
+	}
+	logID, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	return SlotID(slotID), logID
+}
+
+func LogPath(slot SlotID, nodeID string, id UniqueID) string {
 	return path.Join(DataDir, nodeID, LogName(slot, id))
 }
 

@@ -49,7 +49,7 @@ func main() {
 			listenAddr := fmt.Sprintf("%v:%v", ctx.String("ip"), ctx.Int("port"))
 
 			coord := coordinator.NewCoordinator(etcdClient, listenAddr)
-			coord.Recovery()
+			coord.Recover()
 			coord.Register("coordinator")
 			coord.Start()
 

@@ -1,7 +1,6 @@
 package db
 
 import (
-	"bufio"
 	"io"
 	"sync"
 
@@ -37,40 +36,31 @@ func NewRecord(data []byte) *Record {
 	return record
 }
 
-func NewRecordFromByteReader(reader *bufio.Reader) (*Record, error) {
+func NewRecordFromBytes(data []byte) (*Record, uint64) {
 	var (
 		record Record
-		err    error
+		size   uint64
 	)
 
-	record.Checksum, err = binary.Read[uint32](reader)
-	if err != nil {
-		return nil, err
+	if len(data) < RecordHeaderSize {
+		return nil, 0
 	}
 
-	record.Length, err = binary.Read[uint16](reader)
-	if err == io.EOF {
-		err = io.ErrUnexpectedEOF
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	record.Type, err = binary.Read[RecordType](reader)
-	if err == io.EOF {
-		err = io.ErrUnexpectedEOF
-	}
-	if err != nil {
-		return nil, err
+	record.Checksum = binary.Get[uint32](data)
+	size += 4
+	record.Length = binary.Get[uint16](data[size:])
+	size += 2
+	record.Type = binary.Get[RecordType](data[size:])
+	size += 1
+	if len(data[size:]) < int(record.Length) {
+		return nil, 0
 	}
 
 	record.Data = make([]byte, record.Length)
-	_, err = io.ReadFull(reader, record.Data)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
+	copy(record.Data, data[size:size+uint64(record.Length)])
+	size += uint64(record.Length)
 
-	return &record, err
+	return &record, size
 }
 
 func (record *Record) BuildBytes() []byte {

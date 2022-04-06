@@ -10,6 +10,7 @@ const (
 	ServicePrefix = "services"
 	SlotPrefix    = "slots"
 	SSTableIdKey  = "sstable_id"
+	TimestampKey  = "timestamp"
 	VersionSetKey = "version_set"
 	VersionPrefix = "version"
 

@@ -1,12 +1,10 @@
 use dashmap::DashMap;
-use log::error;
+use log::{error, info};
 use tonic::{Request, Response, Status};
-
-
 
 use crate::proto::kvs::key_value_server::KeyValue;
 use crate::proto::kvs::{ReadRequest, ReadResponse, WriteRequest, WriteResponse};
-use crate::proto::status::{ErrorCode};
+use crate::proto::status::ErrorCode;
 use crate::storage::StorageLayer;
 use crate::types::Value;
 use crate::{consts, util::*};
@@ -42,6 +40,10 @@ impl KeyValue for KvServer {
                 status: None,
             },
             None => {
+                info!(
+                    "miss key={} in compute node, will try to read it from storage layer",
+                    request.key
+                );
                 let response = self.storage_layer.get(request).await?.into_inner();
                 let new_value = Value {
                     timestamp: response.ts,
@@ -58,6 +60,10 @@ impl KeyValue for KvServer {
                     })
                     .or_insert(new_value);
 
+                info!(
+                    "got value={} with ts={} from storage layer",
+                    response.value, response.ts
+                );
                 response
             }
         };

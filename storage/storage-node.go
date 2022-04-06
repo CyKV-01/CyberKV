@@ -3,9 +3,14 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net"
+	"os"
+	"path"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -34,6 +39,8 @@ type StorageNode struct {
 	tableMgr  *TableManager // Init at Start()
 	compactor *Compactor
 
+	version  Version
+	logID    common.UniqueID
 	walMutex sync.Mutex
 	wals     map[common.SlotID]*LogWriter
 	store    *minio.Client
@@ -52,6 +59,8 @@ func NewStorageNode(addr string, etcd *etcdcli.Client, minio *minio.Client) *Sto
 
 		compactor: NewCompactor(),
 
+		version:  NewVersion(),
+		logID:    0,
 		walMutex: sync.Mutex{},
 		wals:     make(map[common.SlotID]*LogWriter),
 		store:    minio,
@@ -109,7 +118,28 @@ func (node *StorageNode) Start() {
 	}
 }
 
-func (node *StorageNode) Recovery() {
+func (node *StorageNode) Recover() {
+	node.BaseComponent.Recover()
+
+	logDir := path.Join(common.DataDir, strconv.FormatUint(node.Info.Id, 10))
+	err := os.MkdirAll(logDir, 0777)
+	if err != nil {
+		panic(err)
+	}
+
+	versionBytes, err := os.ReadFile("version.json")
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		panic(err)
+	}
+	if err == nil {
+		log.Info("read version...")
+		err = json.Unmarshal(versionBytes, &node.version)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	RecoverVersion(node, logDir)
 }
 
 func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *proto.CompactMemTableRequest) (*proto.CompactMemTableResponse, error) {
@@ -264,4 +294,8 @@ func (node *StorageNode) heartbeat() {
 
 		time.Sleep(30 * time.Second)
 	}
+}
+
+func (node *StorageNode) nextLogID() common.UniqueID {
+	return atomic.AddUint64(&node.logID, 1)
 }

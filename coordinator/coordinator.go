@@ -19,8 +19,6 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-var _ common.Component = (*Coordinator)(nil)
-
 type Coordinator struct {
 	*common.BaseComponent
 	proto.UnimplementedKeyValueServer
@@ -35,7 +33,7 @@ type Coordinator struct {
 	versionSet         *VersionSet
 	sstableIdAllocator *common.MetaIdAllocator
 
-	ts common.TimeStamp
+	tsAllocator common.IdAllocator
 }
 
 func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
@@ -55,6 +53,11 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		panic(err)
 	}
 
+	tsAllocator, err := common.NewMetaIdAllocator(context.Background(), etcdClient, common.TimestampKey, 100000)
+	if err != nil {
+		panic(err)
+	}
+
 	coord := &Coordinator{
 		BaseComponent:  common.NewBaseComponent(addr, etcdClient),
 		computeCluster: NewCluster[*ComputeNode](etcdClient, 1, 1, 1),
@@ -64,6 +67,8 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		compactor:          NewCompactor(versionSet),
 		versionSet:         versionSet,
 		sstableIdAllocator: allocator,
+
+		tsAllocator: tsAllocator,
 	}
 
 	coord.watchCluster()
@@ -93,8 +98,11 @@ func (coord *Coordinator) Start() {
 	}
 }
 
-func (coord *Coordinator) Recovery() {
+func (coord *Coordinator) Recover() {
+	coord.BaseComponent.Recover()
+
 	log.Info("coordinator recovery...")
+
 	// Recovery service info
 	resp, err := coord.Meta.Get(context.Background(), common.ServicePrefix, etcdcli.WithPrefix())
 	if err != nil {
@@ -216,11 +224,11 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 }
 
 func (coord *Coordinator) GenTs() common.TimeStamp {
-	return atomic.AddUint64(&coord.ts, 1)
-}
-
-func (coord *Coordinator) CurrentTs() common.TimeStamp {
-	return atomic.LoadUint64(&coord.ts)
+	ts, err := coord.tsAllocator.Next()
+	if err != nil {
+		panic(err)
+	}
+	return ts
 }
 
 func (coord *Coordinator) AddSlotMemSize(slot common.SlotID, size uint64) uint64 {

@@ -1,9 +1,9 @@
 package storage
 
 import (
-	"bufio"
 	"io"
 	"io/fs"
+	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -21,10 +21,9 @@ type LogWriter struct {
 	file *os.File
 }
 
-func NewLogWriter(slot common.SlotID, nodeID common.NodeID) *LogWriter {
-	id := common.GenerateUniqueId()
+func NewLogWriter(slot common.SlotID, nodeID common.NodeID, logID common.UniqueID) *LogWriter {
 	nodeIdStr := strconv.FormatUint(nodeID, 10)
-	logPath := common.LogPath(slot, nodeIdStr, id)
+	logPath := common.LogPath(slot, nodeIdStr, logID)
 
 	err := os.MkdirAll(path.Dir(logPath), 0777)
 	if err != nil {
@@ -54,25 +53,20 @@ func (writer *LogWriter) Append(batch *db.Batch) error {
 }
 
 type LogReader struct {
-	slot     common.SlotID
-	file     *os.File
-	curLogId int64
-
-	buf *bufio.Reader
+	data   []byte
+	offset uint64
 }
 
-func NewLogReader(slot common.SlotID) (*LogReader, error) {
+func NewLogReader(path string) (*LogReader, error) {
 
-	file, logId, err := OpenNextLog(slot, -1)
+	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	return &LogReader{
-		slot:     slot,
-		file:     file,
-		curLogId: logId,
-		buf:      bufio.NewReader(file),
+		data:   data,
+		offset: 0,
 	}, nil
 }
 
@@ -130,36 +124,12 @@ func OpenNextLog(slot common.SlotID, curLogId int64) (file *os.File, newLogId in
 	return
 }
 
-func (reader *LogReader) NextRecord() (*db.Record, error) {
-	if reader.file == nil {
-		return nil, io.EOF
-	}
-
+func (reader *LogReader) NextRecord() *db.Record {
 	log.Info("reading record")
-	record, err := db.NewRecordFromByteReader(reader.buf)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
+	record, size := db.NewRecordFromBytes(reader.data[reader.offset:])
+	reader.offset += size
 
-	if err == io.EOF {
-		// switch to next log, and re-read
-		log.Info("switch to next log")
-		reader.file, reader.curLogId, err = OpenNextLog(reader.slot, reader.curLogId)
-		if err != nil {
-			log.Info("no more log",
-				zap.Int32("slot", reader.slot),
-				zap.Int64("log_id", reader.curLogId))
-			return nil, err
-		}
-
-		reader.buf = bufio.NewReader(reader.file)
-
-		if record == nil {
-			log.Info("re-read")
-			record, err = reader.NextRecord()
-		}
-	}
-
-	log.Infof("got record=%+v", record)
-	return record, err
+	log.Debug("got record",
+		zap.Any("record", record))
+	return record
 }
