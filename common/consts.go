@@ -21,6 +21,11 @@ const (
 	MaxLevel           = 8
 )
 
+const (
+	SetValueType ValueType = iota + 1
+	DeleteValueType
+)
+
 func init() {
 	if DefaultReadQuorum+DefaultWriteQuorum <= DefaultReplicaNum {
 		panic("read quorum + write quorum must be greater than replica number")

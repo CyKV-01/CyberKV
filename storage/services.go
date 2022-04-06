@@ -84,6 +84,7 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 	batch.Put(request.Key, request.Value)
 
 	err := wal.Append(batch)
+	batch.Close()
 	if err != nil {
 		return &proto.WriteResponse{
 			Status: &proto.Status{

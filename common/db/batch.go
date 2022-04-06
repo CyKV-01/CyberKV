@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/binary"
@@ -18,10 +19,20 @@ type Batch struct {
 	data []byte
 }
 
-func NewBatch() *Batch {
-	return &Batch{
-		data: make([]byte, BatchHeaderSize),
+var (
+	batchPool = sync.Pool{
+		New: func() any {
+			return &Batch{
+				data: make([]byte, BatchHeaderSize, BatchHeaderSize+128),
+			}
+		},
 	}
+)
+
+func NewBatch() *Batch {
+	batch := batchPool.Get().(*Batch)
+	batch.data = batch.data[:BatchHeaderSize]
+	return batch
 }
 
 func NewBatchFromBytes(bytes []byte) *Batch {
@@ -30,7 +41,12 @@ func NewBatchFromBytes(bytes []byte) *Batch {
 	}
 }
 
+func (batch *Batch) Close() {
+	batchPool.Put(batch)
+}
+
 func (batch *Batch) Put(key, value string) {
+	binary.Append(&batch.data, common.SetValueType)
 	AppendDataWithLength(&batch.data, key)
 	AppendDataWithLength(&batch.data, value)
 }

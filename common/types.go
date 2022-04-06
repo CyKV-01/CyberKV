@@ -9,6 +9,8 @@ type (
 	Comparator[T any] func(a, b T) int
 )
 
+type ValueType byte
+
 type Comparable[T any] interface {
 	Compare(other T) int
 }

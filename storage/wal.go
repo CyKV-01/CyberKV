@@ -44,7 +44,7 @@ func NewLogWriter(slot common.SlotID, nodeID common.NodeID) *LogWriter {
 func (writer *LogWriter) Append(batch *db.Batch) error {
 	record := db.NewRecord(batch.Data())
 
-	_, err := writer.file.Write(record.BuildBytes())
+	err := record.WriteTo(writer.file)
 	if err != nil {
 		return err
 	}

@@ -204,7 +204,7 @@ func (node *StorageNode) CompactMemTableAsFollower(ctx context.Context, request 
 	log.Info("ready to compact memtable as follower",
 		zap.Int32("slot", slot))
 
-	data := make([]*proto.KvData, 0, 100)
+	data := GetKvDataBuffer()
 
 	begin := time.Now()
 	imm.Range(func(key db.InternalKey, value string) bool {
@@ -239,6 +239,7 @@ func (node *StorageNode) CompactMemTableAsFollower(ctx context.Context, request 
 	cli := proto.NewStorageClient(conn)
 
 	_, err = cli.PushMemTable(ctx, &req)
+	PutBackToPool(data)
 	if err != nil {
 		log.Error("failed to push memtable to leader",
 			zap.Int32("slot", slot),
