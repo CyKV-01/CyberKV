@@ -10,6 +10,7 @@ const (
 	ServicePrefix = "services"
 	SlotPrefix    = "slots"
 	SSTableIdKey  = "sstable_id"
+	TimestampKey  = "timestamp"
 	VersionSetKey = "version_set"
 	VersionPrefix = "version"
 
@@ -19,6 +20,11 @@ const (
 	DefaultReadQuorum  = 2
 	DefaultWriteQuorum = 2
 	MaxLevel           = 8
+)
+
+const (
+	SetValueType ValueType = iota + 1
+	DeleteValueType
 )
 
 func init() {

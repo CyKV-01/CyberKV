@@ -12,7 +12,7 @@ import (
 
 func (coord *Coordinator) Get(ctx context.Context, request *proto.ReadRequest) (response *proto.ReadResponse, err error) {
 	if request.Ts <= 0 {
-		request.Ts = coord.CurrentTs()
+		request.Ts = coord.GenTs()
 	}
 
 	slot := common.CalcSlotID(request.Key)

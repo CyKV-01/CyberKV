@@ -18,6 +18,10 @@ import (
 // KeyValue service
 
 func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
+	log.Debug("receive Get request",
+		zap.String("key", request.Key),
+		zap.Uint64("timestamp", request.Ts))
+
 	slot := common.CalcSlotID(request.Key)
 
 	tables := node.mem.GetMemTables(slot)
@@ -62,6 +66,11 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 		}, nil
 	}
 
+	log.Debug("respond to Get request",
+		zap.String("key", request.Key),
+		zap.String("value", value),
+		zap.Uint64("timestamp", key.GetTimeStamp()))
+
 	return &proto.ReadResponse{
 		Value: value,
 		Ts:    key.GetTimeStamp(),
@@ -74,7 +83,7 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 	node.walMutex.Lock()
 	wal, ok := node.wals[slot]
 	if !ok {
-		wal = NewLogWriter(slot, node.Info.Id)
+		wal = NewLogWriter(slot, node.Info.Id, node.nextLogID())
 		node.wals[slot] = wal
 	}
 	node.walMutex.Unlock()
@@ -84,6 +93,7 @@ func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (
 	batch.Put(request.Key, request.Value)
 
 	err := wal.Append(batch)
+	batch.Close()
 	if err != nil {
 		return &proto.WriteResponse{
 			Status: &proto.Status{

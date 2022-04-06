@@ -9,7 +9,7 @@ import (
 
 func init() {
 	config := zap.NewProductionConfig()
-	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
 	config.OutputPaths = []string{"stderr"}
 
 	logger, err := config.Build()

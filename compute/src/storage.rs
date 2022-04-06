@@ -106,6 +106,15 @@ impl StorageLayer {
         for result in results {
             if result.is_ok() {
                 let read_response = result.unwrap().into_inner();
+                if let Some(status) = read_response.status {
+                    if status.err_code != ErrorCode::Ok as i32 {
+                        error!(
+                            "failed to read from storage node, code={}, msg={}",
+                            status.err_code, status.err_message
+                        );
+                    }
+                }
+
                 if read_response.ts > ts {
                     ts = read_response.ts;
                     value = read_response.value;

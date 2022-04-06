@@ -18,7 +18,7 @@ import (
 type Component interface {
 	Register(name string)
 	Start()
-	Recovery()
+	Recover()
 }
 
 type BaseComponent struct {
@@ -43,11 +43,7 @@ func NewBaseComponent(addr string, etcd *etcdcli.Client) *BaseComponent {
 	}
 }
 
-func (node *BaseComponent) Register(name string) {
-	ctx := context.Background()
-	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
-
-	// Check existed NodeInfo
+func (node *BaseComponent) Recover() {
 	nodeInfoBytes, err := ioutil.ReadFile("component.json")
 	hasComponentInfo := false
 	if err != nil {
@@ -62,6 +58,32 @@ func (node *BaseComponent) Register(name string) {
 			hasComponentInfo = true
 		}
 	}
+
+	if !hasComponentInfo {
+		file, err := os.Create("component.json")
+		if err != nil {
+			panic(err)
+		}
+
+		infoBytes, err := json.Marshal(node.Info)
+		if err != nil {
+			panic(err)
+		}
+		_, err = file.Write(infoBytes)
+		if err != nil {
+			panic(err)
+		}
+
+		err = file.Close()
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func (node *BaseComponent) Register(name string) {
+	ctx := context.Background()
+	ctx, _ = context.WithTimeout(ctx, 2*time.Second)
 
 	log.Info("register...",
 		zap.String("name", name))
@@ -109,22 +131,5 @@ func (node *BaseComponent) Register(name string) {
 	if err != nil {
 		log.Errorf("failed to register, err=%v", err)
 		panic(err)
-	}
-
-	if !hasComponentInfo {
-		file, err := os.Create("component.json")
-		if err != nil {
-			panic(err)
-		}
-
-		_, err = file.Write(infoBytes)
-		if err != nil {
-			panic(err)
-		}
-
-		err = file.Close()
-		if err != nil {
-			panic(err)
-		}
 	}
 }

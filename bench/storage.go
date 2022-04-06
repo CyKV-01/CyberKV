@@ -43,6 +43,11 @@ func main() {
 		go func(idx int) {
 			defer wg.Done()
 
+			var (
+				err error
+				req = &proto.WriteRequest{}
+			)
+
 			begin := time.Now()
 			for i := 0; i < cnt; i++ {
 				if i > 0 && i%outputGap == 0 {
@@ -50,19 +55,18 @@ func main() {
 					msg := fmt.Sprintf("writing data... progress: %d/%d", i, cnt)
 					log.Info(msg,
 						zap.Int("goroutine", idx),
-						zap.Float64("TPS", float64(outputGap)/end.Sub(begin).Seconds()))
+						zap.Float64("TPS", float64(outputGap)/end.Sub(begin).Seconds()),
+						zap.Float64("legency", float64(end.Sub(begin).Milliseconds())/float64(outputGap)))
 					begin = end
 				}
 
 				ctx := context.Background()
 				ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
-				req := &proto.WriteRequest{
-					Key:   keys[i%keyCount],
-					Value: values[i],
-				}
+				req.Key = keys[i%keyCount]
+				req.Value = values[i]
 
-				_, err := cli.Set(ctx, req)
+				_, err = cli.Set(ctx, req)
 				if err != nil {
 					log.Warn("failed to set",
 						zap.Int("goroutine", idx),
@@ -89,6 +93,11 @@ func main() {
 		go func(idx int) {
 			defer wg.Done()
 
+			var (
+				err error
+				req = &proto.ReadRequest{}
+			)
+
 			begin := time.Now()
 			for i := 0; i < cnt; i++ {
 				if i > 0 && i%outputGap == 0 {
@@ -96,18 +105,19 @@ func main() {
 					msg := fmt.Sprintf("reading data... progress: %d/%d", i, cnt)
 					log.Info(msg,
 						zap.Int("goroutine", idx),
-						zap.Float64("QPS", float64(outputGap)/end.Sub(begin).Seconds()))
+						zap.Float64("QPS", float64(outputGap)/end.Sub(begin).Seconds()),
+						zap.Float64("legency", float64(end.Sub(begin).Milliseconds())/float64(outputGap)))
 					begin = end
 				}
 
 				ctx := context.Background()
 				ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
-				req := &proto.ReadRequest{
+				req = &proto.ReadRequest{
 					Key: fmt.Sprintf("key-%d", i%10000),
 				}
 
-				_, err := cli.Get(ctx, req)
+				_, err = cli.Get(ctx, req)
 				if err != nil {
 					log.Warn("failed to get",
 						zap.Int("goroutine", idx),
