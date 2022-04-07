@@ -19,6 +19,7 @@ import (
 
 type LogWriter struct {
 	file *os.File
+	path string
 }
 
 func NewLogWriter(slot common.SlotID, nodeID common.NodeID, logID common.UniqueID) *LogWriter {
@@ -37,6 +38,7 @@ func NewLogWriter(slot common.SlotID, nodeID common.NodeID, logID common.UniqueI
 
 	return &LogWriter{
 		file: file,
+		path: logPath,
 	}
 }
 
@@ -50,6 +52,14 @@ func (writer *LogWriter) Append(batch *db.Batch) error {
 
 	err = writer.file.Sync()
 	return err
+}
+
+func (writer *LogWriter) Name() string {
+	return path.Base(writer.path)
+}
+
+func (writer *LogWriter) Path() string {
+	return writer.path;
 }
 
 type LogReader struct {

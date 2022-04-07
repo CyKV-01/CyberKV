@@ -129,7 +129,7 @@ func (coord *Coordinator) Remove(ctx context.Context, request *proto.WriteReques
 
 // Coordinator service
 func (coord *Coordinator) AllocateSSTableID(ctx context.Context, request *proto.AllocateSSTableRequest) (*proto.AllocateSSTableResponse, error) {
-	id, err := coord.sstableIdAllocator.Next()
+	id, err := coord.sstableIdAllocator.NextID()
 	if err != nil {
 		return nil, err
 	}

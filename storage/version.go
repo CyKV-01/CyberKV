@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"encoding/json"
 	"os"
 	"path"
 	"sort"
+	"sync"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/common/db"
@@ -12,11 +14,12 @@ import (
 )
 
 type Version struct {
-	Wals map[common.SlotID]string `json:"wals"` // slotID -> log_name
+	rwmutex sync.RWMutex             `json:"-"`
+	Wals    map[common.SlotID]string `json:"wals"` // slotID -> log_name
 }
 
-func NewVersion() Version {
-	return Version{
+func NewVersion() *Version {
+	return &Version{
 		Wals: make(map[int32]string),
 	}
 }
@@ -106,4 +109,21 @@ func RecoverVersion(node *StorageNode, logDir string) {
 
 	log.Info("recover version done",
 		zap.Uint64("logID", node.logID))
+}
+
+func (version *Version) Set(slotID common.SlotID, logName string) {
+	version.rwmutex.Lock()
+	defer version.rwmutex.Unlock()
+
+	version.Wals[slotID] = logName
+
+	versionBytes, err := json.Marshal(version)
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.WriteFile("version.json", versionBytes, 0666)
+	if err != nil {
+		panic(err)
+	}
 }

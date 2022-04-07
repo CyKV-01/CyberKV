@@ -39,7 +39,7 @@ type StorageNode struct {
 	tableMgr  *TableManager // Init at Start()
 	compactor *Compactor
 
-	version  Version
+	version  *Version
 	logID    common.UniqueID
 	walMutex sync.Mutex
 	wals     map[common.SlotID]*LogWriter
@@ -144,7 +144,7 @@ func (node *StorageNode) Recover() {
 
 func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *proto.CompactMemTableRequest) (*proto.CompactMemTableResponse, error) {
 	slot := common.SlotID(request.Slot)
-	group := node.mem.Rotate(slot)
+	group := node.Rotate(slot)
 	imm := group.Imm()
 
 	log.Info("ready to compact memtable as leader",
@@ -228,7 +228,7 @@ func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *p
 
 func (node *StorageNode) CompactMemTableAsFollower(ctx context.Context, request *proto.CompactMemTableRequest) (*proto.CompactMemTableResponse, error) {
 	slot := common.SlotID(request.Slot)
-	group := node.mem.Rotate(slot)
+	group := node.Rotate(slot)
 	imm := group.Imm()
 
 	log.Info("ready to compact memtable as follower",
@@ -279,6 +279,23 @@ func (node *StorageNode) CompactMemTableAsFollower(ctx context.Context, request 
 	}
 
 	return &proto.CompactMemTableResponse{}, nil
+}
+
+func (node *StorageNode) Rotate(slot common.SlotID) *db.MemTableGroup[db.InternalKey, string] {
+	node.mem.Lock(slot)
+	defer node.mem.Unlock(slot)
+
+	writer := NewLogWriter(slot, node.Info.Id, node.nextLogID())
+	node.walMutex.Lock()
+	if wal, ok := node.wals[slot]; ok {
+		defer os.Remove(wal.Path())
+	}
+	node.wals[slot] = writer
+	node.walMutex.Unlock()
+	
+	node.version.Set(slot, writer.Name())
+
+	return node.mem.Rotate(slot)
 }
 
 func (node *StorageNode) heartbeat() {

@@ -98,9 +98,6 @@ func (table *SlotMemTable[K, V]) CreateTables(slot SlotID) *MemTable[K, V] {
 }
 
 func (table *SlotMemTable[K, V]) Rotate(slot SlotID) *MemTableGroup[K, V] {
-	table.rwmutex.Lock()
-	defer table.rwmutex.Unlock()
-
 	group := table.mem[slot]
 	newGroup := *group
 	for i := 2; i > 0; i-- {

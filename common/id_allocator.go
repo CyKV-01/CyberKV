@@ -12,7 +12,7 @@ import (
 )
 
 type IdAllocator interface {
-	Next() (uint64, error)
+	NextID() (uint64, error)
 }
 
 type MetaIdAllocator struct {
@@ -61,7 +61,7 @@ func NewMetaIdAllocator(ctx context.Context, meta *etcdcli.Client, key string, b
 	}, nil
 }
 
-func (allocator *MetaIdAllocator) Next() (uint64, error) {
+func (allocator *MetaIdAllocator) NextID() (uint64, error) {
 	if allocator.currentId == allocator.endId {
 		var (
 			ctx   = context.Background()

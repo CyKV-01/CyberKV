@@ -53,10 +53,10 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		panic(err)
 	}
 
-	tsAllocator, err := common.NewMetaIdAllocator(context.Background(), etcdClient, common.TimestampKey, 100000)
-	if err != nil {
-		panic(err)
-	}
+	// tsAllocator, err := common.NewMetaIdAllocator(context.Background(), etcdClient, common.TimestampKey, 1000000)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	coord := &Coordinator{
 		BaseComponent:  common.NewBaseComponent(addr, etcdClient),
@@ -68,7 +68,7 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		versionSet:         versionSet,
 		sstableIdAllocator: allocator,
 
-		tsAllocator: tsAllocator,
+		tsAllocator: common.Sonyflake,
 	}
 
 	coord.watchCluster()
@@ -224,7 +224,7 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 }
 
 func (coord *Coordinator) GenTs() common.TimeStamp {
-	ts, err := coord.tsAllocator.Next()
+	ts, err := coord.tsAllocator.NextID()
 	if err != nil {
 		panic(err)
 	}
