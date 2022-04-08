@@ -13,6 +13,7 @@ import (
 
 type IdAllocator interface {
 	NextID() (uint64, error)
+	CurrentID() uint64
 }
 
 type MetaIdAllocator struct {
@@ -100,13 +101,50 @@ func (allocator *MetaIdAllocator) NextID() (uint64, error) {
 	return atomic.AddUint64(&allocator.currentId, 1) - 1, nil
 }
 
-var (
-	Sonyflake = sonyflake.NewSonyflake(sonyflake.Settings{
+func (allocator *MetaIdAllocator) CurrentID() uint64 {
+	return atomic.LoadUint64(&allocator.currentId)
+}
+
+type SonyFlake struct {
+	inner     *sonyflake.Sonyflake
+	currentID uint64
+}
+
+func NewSonyFlake() *SonyFlake {
+	inner := sonyflake.NewSonyflake(sonyflake.Settings{
 		StartTime: time.Now(),
 		MachineID: func() (uint16, error) {
 			return uint16(time.Now().Nanosecond() % 10007), nil
 		},
 	})
+
+	currentID, err := inner.NextID()
+	if err != nil {
+		panic(err)
+	}
+
+	return &SonyFlake{
+		inner:     inner,
+		currentID: currentID,
+	}
+}
+
+func (sf *SonyFlake) CurrentID() uint64 {
+	return atomic.LoadUint64(&sf.currentID)
+}
+
+func (sf *SonyFlake) NextID() (uint64, error) {
+
+	nextID, err := sf.inner.NextID()
+	if err != nil {
+		return 0, err
+	}
+	atomic.StoreUint64(&sf.currentID, nextID)
+	return nextID, nil
+}
+
+var (
+	GLobalSonyflake = NewSonyFlake()
 
 	GlobalMetaIdAllocator *MetaIdAllocator
 )

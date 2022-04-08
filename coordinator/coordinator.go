@@ -36,6 +36,10 @@ type Coordinator struct {
 	tsAllocator common.IdAllocator
 }
 
+func (coord *Coordinator) CurrentTs() uint64 {
+	return coord.tsAllocator.CurrentID()
+}
+
 func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 	replicaNum := common.DefaultReplicaNum
 	readQuorum := common.DefaultReadQuorum
@@ -68,7 +72,7 @@ func NewCoordinator(etcdClient *etcdcli.Client, addr string) *Coordinator {
 		versionSet:         versionSet,
 		sstableIdAllocator: allocator,
 
-		tsAllocator: common.Sonyflake,
+		tsAllocator: common.GLobalSonyflake,
 	}
 
 	coord.watchCluster()
@@ -223,7 +227,7 @@ func (coord *Coordinator) handleWatchEvent(kv *mvccpb.KeyValue) {
 	}
 }
 
-func (coord *Coordinator) GenTs() common.TimeStamp {
+func (coord *Coordinator) GenerateTs() common.TimeStamp {
 	ts, err := coord.tsAllocator.NextID()
 	if err != nil {
 		panic(err)

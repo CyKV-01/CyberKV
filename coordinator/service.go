@@ -12,7 +12,7 @@ import (
 
 func (coord *Coordinator) Get(ctx context.Context, request *proto.ReadRequest) (response *proto.ReadResponse, err error) {
 	if request.Ts <= 0 {
-		request.Ts = coord.GenTs()
+		request.Ts = coord.GenerateTs()
 	}
 
 	slot := common.CalcSlotID(request.Key)
@@ -89,7 +89,7 @@ func (coord *Coordinator) Set(ctx context.Context, request *proto.WriteRequest) 
 		request.Info = append(request.Info, &node.info.NodeInfo)
 	}
 
-	request.Ts = coord.GenTs()
+	request.Ts = coord.GenerateTs()
 
 	resp, err := node.Set(ctx, request)
 	if err != nil {

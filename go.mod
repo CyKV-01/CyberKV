@@ -3,7 +3,9 @@ module github.com/yah01/CyberKV
 go 1.18
 
 require (
+	github.com/sony/sonyflake v1.0.0
 	github.com/stretchr/testify v1.7.1
+	github.com/urfave/cli/v2 v2.4.0
 	go.etcd.io/etcd/client/v3 v3.5.2
 )
 
@@ -16,8 +18,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/smartystreets/assertions v1.2.1 // indirect
-	github.com/sony/sonyflake v1.0.0 // indirect
-	github.com/urfave/cli/v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
@@ -26,8 +26,8 @@ require (
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/google/uuid v1.3.0
+	github.com/golang/protobuf v1.5.2
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/klauspost/compress v1.13.5 // indirect
 	github.com/klauspost/cpuid v1.3.1 // indirect
