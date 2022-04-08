@@ -35,7 +35,7 @@ func NewVersionSet(meta *etcdcli.Client) (*VersionSet, error) {
 			return nil, err
 		}
 
-		id, err := Sonyflake.NextID()
+		id, err := GLobalSonyflake.NextID()
 		if err != nil {
 			return nil, err
 		}
@@ -125,7 +125,7 @@ func (set *VersionSet) Edit(addition []*proto.SSTableLevel, deletion []*proto.SS
 		}
 	}
 
-	id, err := Sonyflake.NextID()
+	id, err := GLobalSonyflake.NextID()
 	if err != nil {
 		return nil, err
 	}

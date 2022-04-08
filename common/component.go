@@ -27,7 +27,7 @@ type BaseComponent struct {
 }
 
 func NewBaseComponent(addr string, etcd *etcdcli.Client) *BaseComponent {
-	id, err := Sonyflake.NextID()
+	id, err := GLobalSonyflake.NextID()
 	if err != nil {
 		panic(err)
 	}
