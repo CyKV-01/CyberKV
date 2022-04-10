@@ -33,7 +33,7 @@ func (mem *MemTable[K, V]) Range(fn func(key K, value V) bool) {
 	mem.table.Range(fn)
 }
 
-type MemTableGroup[K Comparable[K], V any] [3]*MemTable[K, V]
+type MemTableGroup[K Comparable[K], V any] [2]*MemTable[K, V]
 
 func NewMemTableGroup[K Comparable[K], V any]() *MemTableGroup[K, V] {
 	return &MemTableGroup[K, V]{NewMemTable[K, V]()}
@@ -45,10 +45,6 @@ func (group *MemTableGroup[K, V]) Mem() *MemTable[K, V] {
 
 func (group *MemTableGroup[K, V]) Imm() *MemTable[K, V] {
 	return group[1]
-}
-
-func (group *MemTableGroup[K, V]) Fmem() *MemTable[K, V] {
-	return group[2]
 }
 
 type SlotMemTable[K Comparable[K], V any] struct {
@@ -69,16 +65,16 @@ func NewSlotMemTable[K Comparable[K], V any]() *SlotMemTable[K, V] {
 	}
 }
 
-func (table *SlotMemTable[K, V]) GetMemTables(slot SlotID) *MemTableGroup[K, V] {
+func (table *SlotMemTable[K, V]) GetMemTables(slot SlotID) (*MemTable[K, V], *MemTable[K, V]) {
 	table.rwmutex.RLock()
 	defer table.rwmutex.RUnlock()
 
 	group, ok := table.mem[slot]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
-	return group
+	return group.Mem(), group.Imm()
 }
 
 func (table *SlotMemTable[K, V]) GetMemTable(slot SlotID) *MemTable[K, V] {
@@ -100,9 +96,7 @@ func (table *SlotMemTable[K, V]) CreateTables(slot SlotID) *MemTable[K, V] {
 func (table *SlotMemTable[K, V]) Rotate(slot SlotID) *MemTableGroup[K, V] {
 	group := table.mem[slot]
 	newGroup := *group
-	for i := 2; i > 0; i-- {
-		newGroup[i] = newGroup[i-1]
-	}
+	newGroup[1] = newGroup[0]
 	newGroup[0] = NewMemTable[K, V]()
 
 	table.mem[slot] = &newGroup
