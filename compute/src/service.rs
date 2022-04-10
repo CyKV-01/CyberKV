@@ -1,14 +1,16 @@
 use dashmap::DashMap;
 use log::{error, info};
+use prost::Message;
 use tonic::{Request, Response, Status};
 
 use crate::proto::kvs::key_value_server::KeyValue;
-use crate::proto::kvs::{ReadRequest, ReadResponse, WriteRequest, WriteResponse};
+use crate::proto::kvs::{
+    AssignSlotRequest, AssignSlotResponse, ReadRequest, ReadResponse, WriteRequest, WriteResponse,
+};
 use crate::proto::status::ErrorCode;
 use crate::storage::StorageLayer;
 use crate::types::Value;
 use crate::{consts, util::*};
-
 pub struct KvServer {
     mem_table: DashMap<String, Value>,
     storage_layer: StorageLayer,
@@ -29,6 +31,15 @@ impl KvServer {
 
 #[tonic::async_trait]
 impl KeyValue for KvServer {
+    async fn assign_slot(
+        &self,
+        request: Request<AssignSlotRequest>,
+    ) -> Result<Response<AssignSlotResponse>, Status> {
+        // todo
+
+        Ok(Response::new(AssignSlotResponse {}))
+    }
+
     async fn get(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
         let request = request.into_inner();
         let key = request.key.clone();
@@ -73,7 +84,7 @@ impl KeyValue for KvServer {
 
     async fn set(&self, request: Request<WriteRequest>) -> Result<Response<WriteResponse>, Status> {
         let request = request.into_inner();
-        let key = request.key.clone();
+        let clone_request = request.clone();
 
         // write WAL
         let response = self.storage_layer.set(request).await?.into_inner();
@@ -87,8 +98,21 @@ impl KeyValue for KvServer {
             }
         }
 
+        let new_value = Value {
+            timestamp: clone_request.ts,
+            value: clone_request.value.clone(),
+        };
+
         // write memtable
-        self.mem_table.remove(&key);
+        self.mem_table
+            .entry(clone_request.key)
+            .and_modify(|value| {
+                if value.timestamp < clone_request.ts {
+                    value.timestamp = clone_request.ts;
+                    value.value = clone_request.value;
+                }
+            })
+            .or_insert(new_value);
 
         Ok(Response::new(WriteResponse {
             status: Some(build_status(ErrorCode::Ok, "")),

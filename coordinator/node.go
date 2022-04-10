@@ -1,10 +1,14 @@
 package coordinator
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"github.com/yah01/CyberKV/common"
+	"github.com/yah01/CyberKV/common/log"
 	"github.com/yah01/CyberKV/proto"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -53,10 +57,19 @@ type baseNode struct {
 func NewBaseNode(info *VersionedNodeInfo) (*baseNode, error) {
 	conn, err := grpc.Dial(info.Addr, grpc.WithInsecure())
 	if err != nil {
+		log.Error("failed to dial node",
+			zap.Uint64("nodeID", info.Id),
+			zap.String("addr", info.Addr),
+			zap.Error(err))
 		return nil, err
 	}
 
 	kvClient := proto.NewKeyValueClient(conn)
+
+	// _, err = kvClient.AssignSlot(context.Background(), &proto.AssignSlotRequest{SlotID: 0})
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	return &baseNode{
 		info:           info,
@@ -84,6 +97,12 @@ func (node *baseNode) AssignSlots(slots []common.SlotID) error {
 
 	for _, slot := range slots {
 		node.serveSlots[slot] = struct{}{}
+		ctx := context.Background()
+		time.Sleep(time.Second)
+		_, err := node.AssignSlot(ctx, &proto.AssignSlotRequest{SlotID: slot})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -1,6 +1,6 @@
 use core::time;
 
-use crate::error::Result;
+use crate::{error::Result};
 use crate::id_generator::next_id;
 use crate::proto::kvs::key_value_server::*;
 use crate::proto::node::*;

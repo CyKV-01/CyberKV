@@ -1,4 +1,11 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AssignSlotRequest {
+    #[prost(int32, tag = "1")]
+    pub slot_id: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AssignSlotResponse {}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ReadOption {
     #[prost(int32, tag = "1")]
     pub consistency_level: i32,
@@ -108,6 +115,20 @@ pub mod key_value_client {
             self.inner = self.inner.accept_gzip();
             self
         }
+        pub async fn assign_slot(
+            &mut self,
+            request: impl tonic::IntoRequest<super::AssignSlotRequest>,
+        ) -> Result<tonic::Response<super::AssignSlotResponse>, tonic::Status> {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/kvs.KeyValue/AssignSlot");
+            self.inner.unary(request.into_request(), path, codec).await
+        }
         pub async fn get(
             &mut self,
             request: impl tonic::IntoRequest<super::ReadRequest>,
@@ -159,6 +180,10 @@ pub mod key_value_server {
     #[doc = "Generated trait containing gRPC methods that should be implemented for use with KeyValueServer."]
     #[async_trait]
     pub trait KeyValue: Send + Sync + 'static {
+        async fn assign_slot(
+            &self,
+            request: tonic::Request<super::AssignSlotRequest>,
+        ) -> Result<tonic::Response<super::AssignSlotResponse>, tonic::Status>;
         async fn get(
             &self,
             request: tonic::Request<super::ReadRequest>,
@@ -211,6 +236,37 @@ pub mod key_value_server {
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             let inner = self.inner.clone();
             match req.uri().path() {
+                "/kvs.KeyValue/AssignSlot" => {
+                    #[allow(non_camel_case_types)]
+                    struct AssignSlotSvc<T: KeyValue>(pub Arc<T>);
+                    impl<T: KeyValue> tonic::server::UnaryService<super::AssignSlotRequest> for AssignSlotSvc<T> {
+                        type Response = super::AssignSlotResponse;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::AssignSlotRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { (*inner).assign_slot(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = AssignSlotSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec).apply_compression_config(
+                            accept_compression_encodings,
+                            send_compression_encodings,
+                        );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 "/kvs.KeyValue/Get" => {
                     #[allow(non_camel_case_types)]
                     struct GetSvc<T: KeyValue>(pub Arc<T>);

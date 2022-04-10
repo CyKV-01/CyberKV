@@ -175,6 +175,10 @@ func (cluster *Cluster[T]) assignSlots(slots []common.SlotID) error {
 				if !node.HasSlot(common.SlotID(info.Slot)) {
 					err = node.AssignSlots([]common.SlotID{common.SlotID(info.Slot)})
 					if err != nil {
+						log.Error("failed to assign slots to node",
+							zap.Int32s("slots", slots),
+							zap.Uint64("nodeID", node.GetInfo().Id),
+							zap.Error(err))
 						continue
 					}
 				}

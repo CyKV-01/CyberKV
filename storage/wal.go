@@ -59,7 +59,11 @@ func (writer *LogWriter) Name() string {
 }
 
 func (writer *LogWriter) Path() string {
-	return writer.path;
+	return writer.path
+}
+
+func (writer *LogWriter) Close() {
+	writer.file.Close()
 }
 
 type LogReader struct {

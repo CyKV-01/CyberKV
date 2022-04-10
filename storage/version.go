@@ -104,7 +104,8 @@ func RecoverVersion(node *StorageNode, logDir string) {
 	for i := 0; i < len(logs); i++ {
 		slotID, _ := common.ParseLogName(logs[i])
 		node.logID++
-		node.wals[slotID] = NewLogWriter(slotID, node.Info.Id, node.logID)
+		node.wals.Insert(slotID,
+			NewLogWriter(slotID, node.Info.Id, node.logID))
 	}
 
 	log.Info("recover version done",
