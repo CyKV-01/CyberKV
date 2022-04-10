@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/yah01/CyberKV/common"
@@ -76,13 +77,15 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 func (node *StorageNode) Set(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
 	slot := common.CalcSlotID(request.Key)
 
-	node.walMutex.Lock()
-	wal, ok := node.wals[slot]
+	wal, ok := node.wals.Get(slot)
 	if !ok {
-		wal = NewLogWriter(slot, node.Info.Id, node.nextLogID())
-		node.wals[slot] = wal
+		return &proto.WriteResponse{
+			Status: &proto.Status{
+				ErrCode:    proto.ErrorCode_InvalidArgument,
+				ErrMessage: "invalid slot",
+			},
+		}, nil
 	}
-	node.walMutex.Unlock()
 
 	batch := db.NewBatch()
 	batch.SetSequence(request.Ts)
@@ -155,4 +158,15 @@ func (node *StorageNode) PushMemTable(ctx context.Context, request *proto.PushMe
 	close(ch)
 
 	return &proto.PushMemTableResponse{}, nil
+}
+
+func (node *StorageNode) AssignSlot(ctx context.Context, request *proto.AssignSlotRequest) (*proto.AssignSlotResponse, error) {
+	wal := NewLogWriter(request.SlotID, node.Info.Id, node.nextLogID())
+	old, ok := node.wals.GetOrInsert(request.SlotID, wal)
+	if ok {
+		wal.Close()
+		os.Remove(old.Path())
+	}
+
+	return &proto.AssignSlotResponse{}, nil
 }

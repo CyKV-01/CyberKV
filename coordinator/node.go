@@ -1,7 +1,9 @@
 package coordinator
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"github.com/yah01/CyberKV/common"
 	"github.com/yah01/CyberKV/proto"
@@ -82,8 +84,15 @@ func (node *baseNode) AssignSlots(slots []common.SlotID) error {
 	node.rwmutex.Lock()
 	defer node.rwmutex.Unlock()
 
+	ctx := context.Background()
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
+
 	for _, slot := range slots {
 		node.serveSlots[slot] = struct{}{}
+		_, err := node.AssignSlot(ctx, &proto.AssignSlotRequest{SlotID: slot})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

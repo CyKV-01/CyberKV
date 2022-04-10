@@ -7,9 +7,17 @@ import "status.proto";
 import "node.proto";
 
 service KeyValue {
+    rpc AssignSlot(AssignSlotRequest) returns (AssignSlotResponse) {}
     rpc Get(ReadRequest) returns (ReadResponse) {}
     rpc Set(WriteRequest) returns (WriteResponse) {}
     rpc Remove(WriteRequest) returns (WriteResponse) {}
+}
+
+message AssignSlotRequest {
+    int32 slotID = 1;
+}
+
+message AssignSlotResponse {
 }
 
 message ReadOption {

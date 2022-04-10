@@ -31,6 +31,7 @@ type StorageNode struct {
 	*common.BaseComponent
 	proto.UnimplementedKeyValueServer
 	proto.UnimplementedStorageServer
+	proto.UnimplementedNodeServer
 
 	globalRwMutex     sync.RWMutex
 	memTableRwMutexes map[common.SlotID]sync.RWMutex
@@ -39,11 +40,10 @@ type StorageNode struct {
 	tableMgr  *TableManager // Init at Start()
 	compactor *Compactor
 
-	version  *Version
-	logID    common.UniqueID
-	walMutex sync.Mutex
-	wals     map[common.SlotID]*LogWriter
-	store    *minio.Client
+	version *Version
+	logID   common.UniqueID
+	wals    *common.ConcurrentMap[common.SlotID, *LogWriter] // SlotID -> *LogWriter
+	store   *minio.Client
 
 	// Init at Start()
 	coord proto.CoordinatorClient
@@ -59,11 +59,10 @@ func NewStorageNode(addr string, etcd *etcdcli.Client, minio *minio.Client) *Sto
 
 		compactor: NewCompactor(),
 
-		version:  NewVersion(),
-		logID:    0,
-		walMutex: sync.Mutex{},
-		wals:     make(map[common.SlotID]*LogWriter),
-		store:    minio,
+		version: NewVersion(),
+		logID:   0,
+		wals:    common.NewConcurrentMap[common.SlotID, *LogWriter](),
+		store:   minio,
 	}
 }
 
@@ -109,6 +108,7 @@ func (node *StorageNode) Start() {
 	go node.heartbeat()
 
 	server := grpc.NewServer()
+	proto.RegisterNodeServer(server, node)
 	proto.RegisterKeyValueServer(server, node)
 	proto.RegisterStorageServer(server, node)
 	reflection.Register(server)
@@ -286,13 +286,11 @@ func (node *StorageNode) Rotate(slot common.SlotID) *db.MemTableGroup[db.Interna
 	defer node.mem.Unlock(slot)
 
 	writer := NewLogWriter(slot, node.Info.Id, node.nextLogID())
-	node.walMutex.Lock()
-	if wal, ok := node.wals[slot]; ok {
+	if wal, ok := node.wals.Get(slot); ok {
 		defer os.Remove(wal.Path())
 	}
-	node.wals[slot] = writer
-	node.walMutex.Unlock()
-	
+	node.wals.Insert(slot, writer)
+
 	node.version.Set(slot, writer.Name())
 
 	return node.mem.Rotate(slot)

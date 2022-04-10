@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type KeyValueClient interface {
+	AssignSlot(ctx context.Context, in *AssignSlotRequest, opts ...grpc.CallOption) (*AssignSlotResponse, error)
 	Get(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
 	Set(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error)
 	Remove(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error)
@@ -33,6 +34,15 @@ type keyValueClient struct {
 
 func NewKeyValueClient(cc grpc.ClientConnInterface) KeyValueClient {
 	return &keyValueClient{cc}
+}
+
+func (c *keyValueClient) AssignSlot(ctx context.Context, in *AssignSlotRequest, opts ...grpc.CallOption) (*AssignSlotResponse, error) {
+	out := new(AssignSlotResponse)
+	err := c.cc.Invoke(ctx, "/kvs.KeyValue/AssignSlot", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *keyValueClient) Get(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error) {
@@ -66,6 +76,7 @@ func (c *keyValueClient) Remove(ctx context.Context, in *WriteRequest, opts ...g
 // All implementations must embed UnimplementedKeyValueServer
 // for forward compatibility
 type KeyValueServer interface {
+	AssignSlot(context.Context, *AssignSlotRequest) (*AssignSlotResponse, error)
 	Get(context.Context, *ReadRequest) (*ReadResponse, error)
 	Set(context.Context, *WriteRequest) (*WriteResponse, error)
 	Remove(context.Context, *WriteRequest) (*WriteResponse, error)
@@ -76,6 +87,9 @@ type KeyValueServer interface {
 type UnimplementedKeyValueServer struct {
 }
 
+func (UnimplementedKeyValueServer) AssignSlot(context.Context, *AssignSlotRequest) (*AssignSlotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AssignSlot not implemented")
+}
 func (UnimplementedKeyValueServer) Get(context.Context, *ReadRequest) (*ReadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
 }
@@ -96,6 +110,24 @@ type UnsafeKeyValueServer interface {
 
 func RegisterKeyValueServer(s grpc.ServiceRegistrar, srv KeyValueServer) {
 	s.RegisterService(&KeyValue_ServiceDesc, srv)
+}
+
+func _KeyValue_AssignSlot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AssignSlotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KeyValueServer).AssignSlot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/kvs.KeyValue/AssignSlot",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KeyValueServer).AssignSlot(ctx, req.(*AssignSlotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _KeyValue_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -159,6 +191,10 @@ var KeyValue_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "kvs.KeyValue",
 	HandlerType: (*KeyValueServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "AssignSlot",
+			Handler:    _KeyValue_AssignSlot_Handler,
+		},
 		{
 			MethodName: "Get",
 			Handler:    _KeyValue_Get_Handler,
