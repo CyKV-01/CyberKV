@@ -24,8 +24,8 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 
 	slot := common.CalcSlotID(request.Key)
 
-	tables := node.mem.GetMemTables(slot)
-	if tables == nil {
+	mem, imm := node.mem.GetMemTables(slot)
+	if mem == nil {
 		return &proto.ReadResponse{
 			Status: &proto.Status{
 				ErrCode: proto.ErrorCode_KeyNotFound,
@@ -34,26 +34,22 @@ func (node *StorageNode) Get(ctx context.Context, request *proto.ReadRequest) (*
 	}
 
 	var err error
-	mem, imm, fmem := tables[0], tables[1], tables[2]
 	internalKey := db.NewInternalKey(request.Key, request.Ts)
 
 	key, value, ok := mem.Find(internalKey)
 	if (!ok || key.UserKey() != request.Key) && imm != nil {
 		key, value, ok = imm.Find(internalKey)
-		if (!ok || key.UserKey() != request.Key) && fmem != nil {
-			key, value, ok = fmem.Find(internalKey)
-			if !ok || key.UserKey() != request.Key {
-				log.Info("key not found in memtables, will try to read it from sstables",
-					zap.String("key", request.Key))
-				value, ok, err = node.tableMgr.Get(ctx, internalKey)
-				if err != nil {
-					return &proto.ReadResponse{
-						Status: &proto.Status{
-							ErrCode:    proto.ErrorCode_IoError,
-							ErrMessage: err.Error(),
-						},
-					}, nil
-				}
+		if !ok || key.UserKey() != request.Key {
+			log.Info("key not found in memtables, will try to read it from sstables",
+				zap.String("key", request.Key))
+			value, ok, err = node.tableMgr.Get(ctx, internalKey)
+			if err != nil {
+				return &proto.ReadResponse{
+					Status: &proto.Status{
+						ErrCode:    proto.ErrorCode_IoError,
+						ErrMessage: err.Error(),
+					},
+				}, nil
 			}
 		}
 	}
