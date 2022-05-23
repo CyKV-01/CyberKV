@@ -10,10 +10,10 @@ message VersionSet {
 
 message Version {
     uint64 version_id = 1;
-    map<int32, SSTableLevel> sstables = 2;
+    map<int32, SSTableLevel> levels = 2;
 }
 
 message SSTableLevel {
     int32 level = 1;
-    repeated string sstables = 2;
+    repeated string tables = 2;
 }

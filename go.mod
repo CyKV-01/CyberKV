@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/go-cmp v0.5.6 // indirect

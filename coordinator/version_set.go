@@ -41,7 +41,7 @@ func NewVersionSet(meta *etcdcli.Client) (*VersionSet, error) {
 		}
 		version := &proto.Version{
 			VersionId: id,
-			Sstables:  nil,
+			Levels:    nil,
 		}
 
 		log.Debug("save version...")
@@ -105,23 +105,23 @@ func (set *VersionSet) Edit(addition []*proto.SSTableLevel, deletion []*proto.SS
 	version := pb.Clone(set.current).(*proto.Version)
 
 	sstables := make(map[int32]Set[string])
-	for level, tables := range version.Sstables {
+	for level, tables := range version.Levels {
 		levelTable := make(Set[string])
-		levelTable.Insert(tables.Sstables...)
+		levelTable.Insert(tables.Tables...)
 		sstables[level] = levelTable
 	}
 
 	for _, del := range deletion {
 		levelTable, ok := sstables[del.Level]
 		if ok {
-			levelTable.Delete(del.Sstables...)
+			levelTable.Delete(del.Tables...)
 		}
 	}
 
 	for _, add := range addition {
 		levelTable, ok := sstables[add.Level]
 		if ok {
-			levelTable.Insert(add.Sstables...)
+			levelTable.Insert(add.Tables...)
 		}
 	}
 
@@ -131,9 +131,9 @@ func (set *VersionSet) Edit(addition []*proto.SSTableLevel, deletion []*proto.SS
 	}
 	version.VersionId = id
 	for level, tables := range sstables {
-		version.Sstables[level] = &proto.SSTableLevel{
-			Level:    level,
-			Sstables: tables.Collect(),
+		version.Levels[level] = &proto.SSTableLevel{
+			Level:  level,
+			Tables: tables.Collect(),
 		}
 	}
 

@@ -18,7 +18,6 @@ proto:
 
 clean-all: clean
 	@rm cmd/coordinator/coordinator cmd/storage-node/storage-node -v -f
-	@cd compute && cargo clean
 
 clean:
 	@rm cmd/storage-node/data/* -v -f -r

@@ -19,7 +19,7 @@ pub struct KvServer {
 impl KvServer {
     pub fn new() -> Self {
         Self {
-            mem_table: DashMap::new(),
+            mem_table: DashMap::with_capacity_and_shard_amount(10000, 1),
             storage_layer: StorageLayer::new(
                 consts::DEFAULT_REPLICA_NUM,
                 consts::DEFAULT_READ_QUORUM,
@@ -42,7 +42,6 @@ impl KeyValue for KvServer {
 
     async fn get(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
         let request = request.into_inner();
-        let key = request.key.clone();
 
         let response = match self.mem_table.get(&request.key) {
             Some(value) => ReadResponse {
@@ -51,9 +50,10 @@ impl KeyValue for KvServer {
                 status: None,
             },
             None => {
+                let key = request.key.clone();
                 info!(
                     "miss key={} in compute node, will try to read it from storage layer",
-                    request.key
+                    key
                 );
                 let response = self.storage_layer.get(request).await?.into_inner();
                 let new_value = Value {

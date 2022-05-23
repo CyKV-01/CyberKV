@@ -200,16 +200,16 @@ func (node *StorageNode) CompactMemTableAsLeader(ctx context.Context, request *p
 
 	for i := range createdSSTables {
 		createdSSTables[i] = &proto.SSTableLevel{
-			Level:    int32(i),
-			Sstables: make([]string, 0),
+			Level:  int32(i),
+			Tables: make([]string, 0),
 		}
 		deletedSSTables[i] = &proto.SSTableLevel{
-			Level:    int32(i),
-			Sstables: make([]string, 0),
+			Level:  int32(i),
+			Tables: make([]string, 0),
 		}
 	}
 
-	createdSSTables[0].Sstables = append(createdSSTables[0].Sstables, newSSTable.Path)
+	createdSSTables[0].Tables = append(createdSSTables[0].Tables, newSSTable.Path)
 	// for _, sstable := range created {
 	// 	createdSSTables[sstable.Level].Sstables = append(createdSSTables[sstable.Level].Sstables, sstable.Path)
 	// }

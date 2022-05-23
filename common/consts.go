@@ -16,9 +16,9 @@ const (
 
 	DefaultTTL = 10
 
-	DefaultReplicaNum  = 3
-	DefaultReadQuorum  = 2
-	DefaultWriteQuorum = 2
+	DefaultReplicaNum  = 1
+	DefaultReadQuorum  = 1
+	DefaultWriteQuorum = 1
 	MaxLevel           = 8
 )
 

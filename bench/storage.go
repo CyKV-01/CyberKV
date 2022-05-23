@@ -87,6 +87,11 @@ func main() {
 	duration := end.Sub(begin)
 	tps := float64(cnt*concurrency) / duration.Seconds()
 
+	conn, err = grpc.Dial("[::]:5678", grpc.WithInsecure())
+	if err != nil {
+		panic(err)
+	}
+	cli = proto.NewKeyValueClient(conn)
 	begin = time.Now()
 	for c := 0; c < concurrency; c++ {
 		wg.Add(1)

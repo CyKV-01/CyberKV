@@ -12,6 +12,9 @@ import (
 )
 
 const DataDir = "data"
+var (
+	CrcTable = crc32.MakeTable(crc32.Castagnoli)
+)
 
 func LogName(slot SlotID, id UniqueID) string {
 	return fmt.Sprintf("%v_%v.log", slot, id)
@@ -37,12 +40,12 @@ func LogPath(slot SlotID, nodeID string, id UniqueID) string {
 }
 
 func CalcSlotID(key string) SlotID {
-	crc := crc32.Checksum([]byte(key), crc32.MakeTable(crc32.Castagnoli))
+	crc := crc32.Checksum([]byte(key), CrcTable)
 	return SlotID(crc % SlotNum)
 }
 
 func CalcChecksum(data []byte) uint32 {
-	return crc32.Checksum(data, crc32.MakeTable(crc32.Castagnoli))
+	return crc32.Checksum(data, CrcTable)
 }
 
 var uniqueId int64
